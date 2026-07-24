@@ -1,5 +1,5 @@
 {
-  "name": "a11y-core-binding-base",
+  "name": "@a11y-core/binding-base",
   "version": "0.1.0",
   "description": "Shared, driver-agnostic scaffolding for a11y-core's framework bindings (Playwright, Puppeteer, Selenium, WebdriverIO, Cypress) -- not useful on its own.",
   "main": "src/index.js",

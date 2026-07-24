@@ -22,7 +22,7 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 ```json
 {
   "dependencies": {
-    "a11y-core-binding-base": "file:../a11y-core-binding-base"
+    "@a11y-core/binding-base": "file:../binding-base"
   }
 }
 ```
