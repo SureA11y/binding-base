@@ -4,6 +4,7 @@
   "description": "Shared, driver-agnostic scaffolding for a11y-core's framework bindings (Playwright, Puppeteer, Selenium, WebdriverIO, Cypress) -- not useful on its own.",
   "main": "src/index.js",
   "types": "src/index.d.ts",
+  "author": "Jorge Rumoroso",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,6 +16,9 @@
   },
   "engines": {
     "node": ">=18.13.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "src",
