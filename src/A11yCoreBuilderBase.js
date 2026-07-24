@@ -100,7 +100,7 @@ class A11yCoreBuilderBase {
   /**
    * Register one or more custom rules for just this scan (a11y-core's
    * engineOptions.customRules escape hatch -- see a11y-core's
-   * docs/ENGINE_OPTIONS.md -- axe's configure({ rules }) equivalent). A
+   * docs/ENGINE_OPTIONS.md). A
    * descriptor is { id, meta?, runInPage, applicability?, data? }, the same
    * shape as an internal a11y-core rule module's own export. Call multiple
    * times to register several rules across one scan (accumulates, same as
@@ -113,9 +113,8 @@ class A11yCoreBuilderBase {
    * for what it does and why a subclass might override it.
    *
    * A descriptor whose `id` collides with a built-in rule overrides it for
-   * that scan only (a11y-core's own semantics, matching axe's configure()
-   * override behavior) -- nothing here persists past this one analyze() call
-   * or mutates a11y-core's static rule catalog.
+   * that scan only (a11y-core's own semantics) -- nothing here persists past
+   * this one analyze() call or mutates a11y-core's static rule catalog.
    */
   withCustomRules(rules) {
     const list = Array.isArray(rules) ? rules : [rules];
