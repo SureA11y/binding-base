@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumoroso/a11y-labs-binding-base.git"
+    "url": "git+https://github.com/rumoroso/a11y-labs-core-binding-base.git"
   },
-  "homepage": "https://github.com/rumoroso/a11y-labs-binding-base#readme",
+  "homepage": "https://github.com/rumoroso/a11y-labs-core-binding-base#readme",
   "bugs": {
-    "url": "https://github.com/rumoroso/a11y-labs-binding-base/issues"
+    "url": "https://github.com/rumoroso/a11y-labs-core-binding-base/issues"
   },
   "engines": {
     "node": ">=18.13.0"
