@@ -5,9 +5,22 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rumoroso/a11y-core-binding-base.git"
+  },
+  "homepage": "https://github.com/rumoroso/a11y-core-binding-base#readme",
+  "bugs": {
+    "url": "https://github.com/rumoroso/a11y-core-binding-base/issues"
+  },
   "engines": {
     "node": ">=18.13.0"
   },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\""
   }
