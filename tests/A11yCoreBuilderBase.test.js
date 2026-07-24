@@ -47,10 +47,10 @@ test('A11yCoreBuilderBase: withTags()/disableTags() accept a string or array and
 
 test('A11yCoreBuilderBase: withRules()/disableRules() accept a string or array and accumulate', () => {
   const b = new A11yCoreBuilderBase();
-  b.withRules('a11ycore-img-alt-present').withRules(['a11ycore-button-name-present']);
-  assert.deepStrictEqual(b._includeRuleIds, ['a11ycore-img-alt-present', 'a11ycore-button-name-present']);
-  b.disableRules(['a11ycore-meta-refresh-no-exceptions']);
-  assert.deepStrictEqual(b._excludeRuleIds, ['a11ycore-meta-refresh-no-exceptions']);
+  b.withRules('img-alt-present').withRules(['button-name-present']);
+  assert.deepStrictEqual(b._includeRuleIds, ['img-alt-present', 'button-name-present']);
+  b.disableRules(['meta-refresh-no-exceptions']);
+  assert.deepStrictEqual(b._excludeRuleIds, ['meta-refresh-no-exceptions']);
 });
 
 test('A11yCoreBuilderBase: options() merges into engineOptions, does not replace wholesale', () => {
@@ -169,9 +169,9 @@ test('A11yCoreBuilderBase: _buildEngineArgs() derives contextSelector/engineOpti
   assert.deepStrictEqual(b2._buildEngineArgs().engineOptions, { excludeSelectors: ['.cookie-banner'] });
 
   const b3 = new A11yCoreBuilderBase();
-  b3.withRules('a11ycore-img-alt-present').disableTags('best-practice');
+  b3.withRules('img-alt-present').disableTags('best-practice');
   assert.deepStrictEqual(b3._buildEngineArgs().runOnly, {
-    includeRuleIds: ['a11ycore-img-alt-present'],
+    includeRuleIds: ['img-alt-present'],
     excludeRuleIds: undefined,
     tags: undefined,
     excludeTags: ['best-practice']

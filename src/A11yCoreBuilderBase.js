@@ -2,12 +2,12 @@
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
 
-// See a11y-core's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
+// See a11y-labs's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
 const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
 /**
- * Shared, driver-agnostic scaffolding for every a11y-core binding's own
+ * Shared, driver-agnostic scaffolding for every a11y-labs binding's own
  * `A11yCoreBuilder` (Playwright/Puppeteer/Selenium/WebdriverIO/Cypress).
  * Not meant to be used directly -- each binding's own `A11yCoreBuilder`
  * extends this class and adds exactly the parts that are genuinely
@@ -31,8 +31,8 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  */
 class A11yCoreBuilderBase {
   /**
-   * @param {{ url?: string }} [opts] `url` overrides the URL a11y-core
-   *   reports for the top-level scan's result; when omitted, a11y-core
+   * @param {{ url?: string }} [opts] `url` overrides the URL a11y-labs
+   *   reports for the top-level scan's result; when omitted, a11y-labs
    *   falls back to the page's own `document.location.href` itself.
    */
   constructor({ url } = {}) {
@@ -52,8 +52,8 @@ class A11yCoreBuilderBase {
 
   /**
    * Scope the scan to one region. Call multiple times to scan several,
-   * possibly disjoint regions in one run (a11y-core's contextSelector
-   * accepts an array of selectors for exactly this -- see a11y-core's
+   * possibly disjoint regions in one run (a11y-labs's contextSelector
+   * accepts an array of selectors for exactly this -- see a11y-labs's
    * docs/ENGINE_OPTIONS.md).
    */
   include(selector) {
@@ -79,7 +79,7 @@ class A11yCoreBuilderBase {
     return this;
   }
 
-  /** Only run these specific rule IDs (accepts with or without the a11ycore- prefix). */
+  /** Only run these specific rule IDs (accepts with or without the  prefix). */
   withRules(ruleIds) {
     this._includeRuleIds = this._includeRuleIds.concat(Array.isArray(ruleIds) ? ruleIds : [ruleIds]);
     return this;
@@ -91,18 +91,18 @@ class A11yCoreBuilderBase {
     return this;
   }
 
-  /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...) -- see a11y-core's docs/ENGINE_OPTIONS.md. */
+  /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...) -- see a11y-labs's docs/ENGINE_OPTIONS.md. */
   options(partialEngineOptions) {
     this._engineOptions = { ...this._engineOptions, ...(partialEngineOptions || {}) };
     return this;
   }
 
   /**
-   * Register one or more custom rules for just this scan (a11y-core's
-   * engineOptions.customRules escape hatch -- see a11y-core's
+   * Register one or more custom rules for just this scan (a11y-labs's
+   * engineOptions.customRules escape hatch -- see a11y-labs's
    * docs/ENGINE_OPTIONS.md). A
    * descriptor is { id, meta?, runInPage, applicability?, data? }, the same
-   * shape as an internal a11y-core rule module's own export. Call multiple
+   * shape as an internal a11y-labs rule module's own export. Call multiple
    * times to register several rules across one scan (accumulates, same as
    * withRules()/withTags()).
    *
@@ -113,8 +113,8 @@ class A11yCoreBuilderBase {
    * for what it does and why a subclass might override it.
    *
    * A descriptor whose `id` collides with a built-in rule overrides it for
-   * that scan only (a11y-core's own semantics) -- nothing here persists past
-   * this one analyze() call or mutates a11y-core's static rule catalog.
+   * that scan only (a11y-labs's own semantics) -- nothing here persists past
+   * this one analyze() call or mutates a11y-labs's static rule catalog.
    */
   withCustomRules(rules) {
     const list = Array.isArray(rules) ? rules : [rules];
@@ -144,7 +144,7 @@ class A11yCoreBuilderBase {
    * page.evaluate()/executeScript()/browser.execute() -- to reach the page):
    * converts a live `runInPage`/`applicability` function to a function-source
    * string via `toReconstructableSource()`, since that boundary cannot carry
-   * a live Function reference (a11y-core reconstructs the string back into a
+   * a live Function reference (a11y-labs reconstructs the string back into a
    * function with `new Function` on the page side). A string is passed
    * through unchanged.
    *
@@ -166,7 +166,7 @@ class A11yCoreBuilderBase {
   /**
    * Post-filter `checksResults` down to only the given outcomes (e.g.
    * .reportOnly(['fail', 'cantTell']) to drop pass/notApplicable noise).
-   * Binding-layer only -- a11y-core itself always computes every rule's
+   * Binding-layer only -- a11y-labs itself always computes every rule's
    * outcome; this just trims what analyze() hands back. Applied per-frame
    * when combined with .frames(true).
    */
@@ -206,7 +206,7 @@ class A11yCoreBuilderBase {
   }
 
   /**
-   * Builds the three arguments every binding passes into a11y-core's
+   * Builds the three arguments every binding passes into a11y-labs's
    * `runa11yCoreInPage(pageUrl, contextSelector, engineOptions, runOnly)` --
    * everything derivable from this builder's own accumulated state, with no
    * driver-specific work at all. A subclass's `analyze()` calls this first,
