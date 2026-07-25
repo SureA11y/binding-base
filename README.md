@@ -12,6 +12,7 @@ Extracted once five real consumers existed and the duplication was actually cost
 - **`_normalizeCustomRule(rule)`** — the one real point of behavioral divergence across bindings, exposed as an overridable hook. The default (correct for Playwright/Puppeteer/Selenium/WebdriverIO) stringifies a live `runInPage`/`applicability` function via `toReconstructableSource()`, since those drivers cross a real serialization boundary (`page.evaluate()`/`executeScript()`/`browser.execute()`) that can't carry a live `Function` reference. Cypress overrides this to a no-op passthrough, since its test code shares a browser tab with the page it's scanning and needs no stringification (see its own `ROADMAP.md` §2b/§2f).
 - **`canReconstructAsFunction`/`toReconstructableSource`** — the reconstruction-verification helpers `_normalizeCustomRule`'s default uses, exported separately in case a binding needs them directly.
 - **`formatFailures`** — turns a `checksResults` array into a short, human-readable failure block. Framework-agnostic, no assertion-library dependency.
+- **`VALID_OUTCOMES`** — the four valid `checksResults` outcome strings (`'pass' | 'fail' | 'cantTell' | 'notApplicable'`), typed as `Outcome` in the `.d.ts`. Exported so a binding can validate against the same list `reportOnly()` uses internally.
 
 ## What's deliberately NOT here
 
@@ -22,13 +23,13 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 ```json
 {
   "dependencies": {
-    "@a11y-labs/binding-base": "file:../binding-base"
+    "@a11y-labs/binding-base": "^0.1.0"
   }
 }
 ```
 
 ```js
-const { A11yCoreBuilderBase } = require('a11y-labs-binding-base');
+const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
 
 class A11yCoreBuilder extends A11yCoreBuilderBase {
   constructor({ page, url } = {}) {
@@ -40,6 +41,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   async analyze() {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
     // ...driver-specific injection, using contextSelector/engineOptions/runOnly...
+    const result = /* ...native result from the driver-specific injection above... */;
+    return this._applyReportOnly(result);
   }
 }
 ```
