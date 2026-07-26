@@ -23,7 +23,7 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 ```json
 {
   "dependencies": {
-    "@surea11y/binding-base": "^0.1.0"
+    "@surea11y/binding-base": "^1.0.0"
   }
 }
 ```
