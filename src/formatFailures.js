@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Turns a11y-labs's checksResults array into a short, human-readable block
+ * Turns surea11y's checksResults array into a short, human-readable block
  * -- one entry per occurrence, not per rule, since a single rule can flag
  * several elements. Meant to be handed to an assertion library's own
  * failure-message parameter, e.g. (shape varies slightly per binding, see
@@ -13,14 +13,14 @@
  * Deliberately a plain function, not a custom `expect` matcher -- it has no
  * dependency on any particular assertion library (node:assert, Jest, Vitest,
  * Chai, or a hand-rolled `if`/`throw` all work the same way). Identical
- * across every a11y-labs binding (Playwright/Puppeteer/Selenium/WebdriverIO/
+ * across every surea11y binding (Playwright/Puppeteer/Selenium/WebdriverIO/
  * Cypress) -- this is exactly the kind of framework-agnostic duplication
- * a11y-labs-binding-base exists to hold in one place. See this package's
+ * surea11y-binding-base exists to hold in one place. See this package's
  * README.md.
  *
- * @param {Array<object>} checksResults a11y-labs's checksResults array (or
+ * @param {Array<object>} checksResults surea11y's checksResults array (or
  *   any subset of it, e.g. already passed through .reportOnly()) -- see
- *   a11y-labs's docs/OUTPUT_SCHEMA.md for the shape.
+ *   surea11y's docs/OUTPUT_SCHEMA.md for the shape.
  * @param {{ outcomes?: string[] }} [opts] Which outcomes to include.
  *   Defaults to ['fail', 'cantTell'] -- the two outcomes that ever carry
  *   occurrences (see OUTPUT_SCHEMA.md's note on `pass`/`notApplicable`

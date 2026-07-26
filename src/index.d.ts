@@ -1,4 +1,4 @@
-// Internal scaffolding consumed by each a11y-labs binding's own
+// Internal scaffolding consumed by each surea11y binding's own
 // A11yCoreBuilder (see each binding's own hand-written .d.ts for the
 // consumer-facing types -- those declare a flat, non-inheriting
 // `export class A11yCoreBuilder { ... }`, so nothing here needs to be
