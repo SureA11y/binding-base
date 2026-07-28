@@ -10,6 +10,7 @@ test('A11yCoreBuilderBase: constructor initializes empty/default state', () => {
   assert.strictEqual(b._scanFrames, false);
   assert.deepStrictEqual(b._includeSelectors, []);
   assert.deepStrictEqual(b._excludeSelectors, []);
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, {});
   assert.deepStrictEqual(b._includeRuleIds, []);
   assert.deepStrictEqual(b._excludeRuleIds, []);
   assert.deepStrictEqual(b._tags, []);
@@ -35,6 +36,48 @@ test('A11yCoreBuilderBase: include()/exclude() accumulate and are chainable', ()
   // Falsy selector is a no-op, not pushed.
   b.include('');
   assert.deepStrictEqual(b._includeSelectors, ['#a', '#b']);
+});
+
+test('A11yCoreBuilderBase: exclude(selector, { rules }) scopes the selector to just the named rule ID(s), leaving the global list untouched', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+  assert.deepStrictEqual(b._excludeSelectors, []);
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, { 'aria-required-children': ['.mat-select'] });
+});
+
+test('A11yCoreBuilderBase: exclude() with no opts still pushes to the global list unchanged (backward compatible)', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('#cookie-banner');
+  assert.deepStrictEqual(b._excludeSelectors, ['#cookie-banner']);
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, {});
+});
+
+test('A11yCoreBuilderBase: exclude() global and rule-scoped calls combine without interfering', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('#cookie-banner');
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+  assert.deepStrictEqual(b._excludeSelectors, ['#cookie-banner']);
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, { 'aria-required-children': ['.mat-select'] });
+});
+
+test('A11yCoreBuilderBase: exclude(selector, { rules }) accepts multiple rule IDs in one call', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('.mat-select', { rules: ['aria-required-children', 'color-contrast'] });
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, {
+    'aria-required-children': ['.mat-select'],
+    'color-contrast': ['.mat-select']
+  });
+});
+
+test('A11yCoreBuilderBase: exclude(selector, { rules }) accumulates across multiple calls, including repeats for the same rule ID', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+  b.exclude('.mat-option', { rules: ['aria-required-children'] });
+  b.exclude('#modal', { rules: 'color-contrast' });
+  assert.deepStrictEqual(b._ruleScopedExcludeSelectors, {
+    'aria-required-children': ['.mat-select', '.mat-option'],
+    'color-contrast': ['#modal']
+  });
 });
 
 test('A11yCoreBuilderBase: withTags()/disableTags() accept a string or array and accumulate', () => {
@@ -176,6 +219,38 @@ test('A11yCoreBuilderBase: _buildEngineArgs() derives contextSelector/engineOpti
     tags: undefined,
     excludeTags: ['best-practice']
   });
+});
+
+test('A11yCoreBuilderBase: _buildEngineArgs() produces engineOptions.rules[ruleId].excludeSelectors from rule-scoped exclude() calls', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+  b.exclude('.mat-option', { rules: ['aria-required-children', 'color-contrast'] });
+  assert.deepStrictEqual(b._buildEngineArgs().engineOptions.rules, {
+    'aria-required-children': { excludeSelectors: ['.mat-select', '.mat-option'] },
+    'color-contrast': { excludeSelectors: ['.mat-option'] }
+  });
+});
+
+test('A11yCoreBuilderBase: _buildEngineArgs() merges rule-scoped exclude() into a raw options({ rules }) call, without clobbering either', () => {
+  const b = new A11yCoreBuilderBase();
+  b.options({ rules: { 'aria-required-children': { enabled: false }, 'other-rule': { severity: 'minor' } } });
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+
+  const { engineOptions } = b._buildEngineArgs();
+  assert.deepStrictEqual(engineOptions.rules, {
+    'aria-required-children': { enabled: false, excludeSelectors: ['.mat-select'] },
+    'other-rule': { severity: 'minor' }
+  });
+});
+
+test('A11yCoreBuilderBase: _buildEngineArgs() combines global excludeSelectors and rule-scoped rules independently', () => {
+  const b = new A11yCoreBuilderBase();
+  b.exclude('#cookie-banner');
+  b.exclude('.mat-select', { rules: ['aria-required-children'] });
+
+  const { engineOptions } = b._buildEngineArgs();
+  assert.deepStrictEqual(engineOptions.excludeSelectors, ['#cookie-banner']);
+  assert.deepStrictEqual(engineOptions.rules, { 'aria-required-children': { excludeSelectors: ['.mat-select'] } });
 });
 
 test('A11yCoreBuilderBase: _buildEngineArgs() concatenates withCustomRules() registrations with a raw options({ customRules }) call, not clobbering either', () => {

@@ -14,6 +14,23 @@ Extracted once five real consumers existed and the duplication was actually cost
 - **`formatFailures`** — turns a `checksResults` array into a short, human-readable failure block. Framework-agnostic, no assertion-library dependency.
 - **`VALID_OUTCOMES`** — the four valid `checksResults` outcome strings (`'pass' | 'fail' | 'cantTell' | 'notApplicable'`), typed as `Outcome` in the `.d.ts`. Exported so a binding can validate against the same list `reportOnly()` uses internally.
 
+### `exclude(selector, opts?)`
+
+`exclude(selector)` skips elements matching `selector` everywhere in the scanned scope (surea11y's `engineOptions.excludeSelectors`). Passing `opts.rules` scopes that exclusion to just the named rule ID(s) instead — on top of, not instead of, any global exclusions from other `.exclude(selector)` calls:
+
+```js
+builder
+  // global: skipped by every rule
+  .exclude('#cookie-banner')
+  // rule-scoped: '.mat-select' is only skipped by aria-required-children --
+  // color-contrast and every other rule still sees it
+  .exclude('.mat-select', { rules: ['aria-required-children'] })
+  // one selector can be scoped to several rules in one call
+  .exclude('.mat-option', { rules: ['aria-required-children', 'color-contrast'] });
+```
+
+`opts.rules` accepts a single rule ID or an array, and the same bare / `a11ycore-`-prefixed forms `withRules()`/`disableRules()` accept. `_buildEngineArgs()` compiles the accumulated rule-scoped selectors into `engineOptions.rules[ruleId].excludeSelectors`, merged with (never clobbering) any per-rule config already set via a raw `.options({ rules })` call.
+
 ## What's deliberately NOT here
 
 Anything that actually touches a driver: the constructor's driver-handle validation, `analyze()`'s injection mechanics, all frame-traversal logic (each binding's is structurally different — flat array iteration, recursive DOM walk, stateful context-switching with unwinding, stateful context-switching with index-path replay), and `_attachElementRefs()` (different API per driver, and even the output field name differs: `elementHandle` vs `element`).

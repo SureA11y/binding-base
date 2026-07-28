@@ -40,6 +40,7 @@ class A11yCoreBuilderBase {
     this._scanFrames = false;
     this._includeSelectors = [];
     this._excludeSelectors = [];
+    this._ruleScopedExcludeSelectors = {};
     this._includeRuleIds = [];
     this._excludeRuleIds = [];
     this._tags = [];
@@ -61,9 +62,26 @@ class A11yCoreBuilderBase {
     return this;
   }
 
-  /** Skip elements matching this selector anywhere in the scanned scope. */
-  exclude(selector) {
-    if (selector) this._excludeSelectors.push(selector);
+  /**
+   * Skip elements matching this selector anywhere in the scanned scope.
+   * With `opts.rules`, the exclusion applies only to the named rule ID(s)
+   * instead of globally -- on top of (not instead of) any global exclusions
+   * from other `.exclude(selector)` calls. Rule IDs accept the same bare /
+   * `a11ycore-`-prefixed forms `withRules()`/`disableRules()` accept.
+   * @param {string} selector
+   * @param {{ rules?: (string|string[]) }} [opts]
+   */
+  exclude(selector, opts) {
+    if (!selector) return this;
+    const ruleIds = opts && opts.rules ? (Array.isArray(opts.rules) ? opts.rules : [opts.rules]) : null;
+    if (ruleIds && ruleIds.length) {
+      for (const ruleId of ruleIds) {
+        if (!this._ruleScopedExcludeSelectors[ruleId]) this._ruleScopedExcludeSelectors[ruleId] = [];
+        this._ruleScopedExcludeSelectors[ruleId].push(selector);
+      }
+    } else {
+      this._excludeSelectors.push(selector);
+    }
     return this;
   }
 
@@ -230,6 +248,23 @@ class A11yCoreBuilderBase {
     }
     if (this._excludeSelectors.length) {
       engineOptions.excludeSelectors = this._excludeSelectors;
+    }
+    const ruleScopedIds = Object.keys(this._ruleScopedExcludeSelectors);
+    if (ruleScopedIds.length) {
+      // Merged with, not clobbering, any per-rule config already present via
+      // a raw .options({ rules }) call -- same compose-not-clobber pattern as
+      // customRules above.
+      const existingRules = this._engineOptions.rules || {};
+      const rules = { ...existingRules };
+      for (const ruleId of ruleScopedIds) {
+        const existingRuleConfig = existingRules[ruleId] || {};
+        const existingExcludeSelectors = Array.isArray(existingRuleConfig.excludeSelectors) ? existingRuleConfig.excludeSelectors : [];
+        rules[ruleId] = {
+          ...existingRuleConfig,
+          excludeSelectors: existingExcludeSelectors.concat(this._ruleScopedExcludeSelectors[ruleId])
+        };
+      }
+      engineOptions.rules = rules;
     }
 
     const hasRunOnly = this._includeRuleIds.length || this._excludeRuleIds.length || this._tags.length || this._excludeTags.length;

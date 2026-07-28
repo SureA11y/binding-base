@@ -28,7 +28,7 @@ export interface EngineArgs {
 export class A11yCoreBuilderBase {
   constructor(opts?: { url?: string });
   include(selector: string): this;
-  exclude(selector: string): this;
+  exclude(selector: string, opts?: { rules?: string | string[] }): this;
   withTags(tags: string | string[]): this;
   disableTags(tags: string | string[]): this;
   withRules(ruleIds: string | string[]): this;
