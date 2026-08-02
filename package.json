@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/binding-base",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Shared, driver-agnostic scaffolding for surea11y's framework bindings (Playwright, Puppeteer, Selenium, WebdriverIO, Cypress) -- not useful on its own.",
   "main": "src/index.js",
   "types": "src/index.d.ts",

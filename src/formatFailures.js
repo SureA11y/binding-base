@@ -15,7 +15,7 @@
  * Chai, or a hand-rolled `if`/`throw` all work the same way). Identical
  * across every surea11y binding (Playwright/Puppeteer/Selenium/WebdriverIO/
  * Cypress) -- this is exactly the kind of framework-agnostic duplication
- * surea11y-binding-base exists to hold in one place. See this package's
+ * @surea11y/binding-base exists to hold in one place. See this package's
  * README.md.
  *
  * @param {Array<object>} checksResults surea11y's checksResults array (or

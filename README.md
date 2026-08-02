@@ -1,15 +1,15 @@
-# surea11y-binding-base
+# @surea11y/binding-base
 
-Shared, driver-agnostic scaffolding for [`surea11y`](../surea11y)'s framework bindings — [`surea11y-playwright`](../surea11y-playwright), [`surea11y-puppeteer`](../surea11y-puppeteer), [`surea11y-selenium`](../surea11y-selenium), [`surea11y-webdriverio`](../surea11y-webdriverio), and [`surea11y-cypress`](../surea11y-cypress).
+Shared, driver-agnostic scaffolding for [`@surea11y/core`](https://github.com/rumoroso/surea11y-core)'s framework bindings — `@surea11y/playwright`, `@surea11y/puppeteer`, `@surea11y/selenium`, `@surea11y/webdriverio`, and `@surea11y/cypress`.
 
 **Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`.
 
-Extracted once five real consumers existed and the duplication was actually costing something (each sibling binding's own `ROADMAP.md` flagged this exact extraction as the right next step, deliberately deferred until there were enough consumers to justify it — see e.g. `../surea11y-selenium/ROADMAP.md`'s note on this).
+Extracted once five real consumers existed and the duplication was actually costing something — each binding carried the same logic in parallel, and keeping it in sync by hand across five packages was no longer worth the cost once there were that many consumers to justify a shared package.
 
 ## What's here
 
 - **`A11yCoreBuilderBase`** — a class each binding's own `A11yCoreBuilder` extends. Owns the constructor's shared state, every scoping/config method, and `_buildEngineArgs()` (derives surea11y's `(pageUrl, contextSelector, engineOptions, runOnly)` call shape from that state). Does **not** implement `analyze()` — that's 100% driver-specific and stays in each binding.
-- **`_normalizeCustomRule(rule)`** — the one real point of behavioral divergence across bindings, exposed as an overridable hook. The default (correct for Playwright/Puppeteer/Selenium/WebdriverIO) stringifies a live `runInPage`/`applicability` function via `toReconstructableSource()`, since those drivers cross a real serialization boundary (`page.evaluate()`/`executeScript()`/`browser.execute()`) that can't carry a live `Function` reference. Cypress overrides this to a no-op passthrough, since its test code shares a browser tab with the page it's scanning and needs no stringification (see its own `ROADMAP.md` §2b/§2f).
+- **`_normalizeCustomRule(rule)`** — the one real point of behavioral divergence across bindings, exposed as an overridable hook. The default (correct for Playwright/Puppeteer/Selenium/WebdriverIO) stringifies a live `runInPage`/`applicability` function via `toReconstructableSource()`, since those drivers cross a real serialization boundary (`page.evaluate()`/`executeScript()`/`browser.execute()`) that can't carry a live `Function` reference. Cypress overrides this to a no-op passthrough, since its test code shares a browser tab with the page it's scanning and needs no stringification.
 - **`canReconstructAsFunction`/`toReconstructableSource`** — the reconstruction-verification helpers `_normalizeCustomRule`'s default uses, exported separately in case a binding needs them directly.
 - **`formatFailures`** — turns a `checksResults` array into a short, human-readable failure block. Framework-agnostic, no assertion-library dependency.
 - **`VALID_OUTCOMES`** — the four valid `checksResults` outcome strings (`'pass' | 'fail' | 'cantTell' | 'notApplicable'`), typed as `Outcome` in the `.d.ts`. Exported so a binding can validate against the same list `reportOnly()` uses internally.
@@ -73,3 +73,9 @@ Pure Node logic, no browser needed:
 ```bash
 npm test
 ```
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE).
+
+This package depends on [`@surea11y/core`](https://github.com/rumoroso/surea11y-core), which is MPL-2.0. MPL-2.0's copyleft is file-level and applies only to `@surea11y/core`'s own source files; consuming it as a normal package dependency doesn't affect this package's license.
