@@ -13,14 +13,13 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * extends this class and adds exactly the parts that are genuinely
  * driver-specific: the constructor's driver-handle validation, `analyze()`'s
  * actual injection mechanics, all frame-traversal logic, and
- * `_attachElementRefs()`. See each binding's own README.md/ROADMAP.md for the
+ * `_attachElementRefs()`. See each binding's own README.md for the
  * user-facing API and driver-specific behavior -- this class's own doc
  * comments describe the shared mechanics only, not end-user usage.
  *
  * Every method here was, until this package existed, copy-pasted
  * byte-for-byte across all five binding projects. Extracted once five real
- * consumers existed (each sibling binding's own ROADMAP.md flagged this as
- * the right threshold, deliberately deferred until then).
+ * consumers existed and the duplication was actually costing something.
  *
  * Mutability contract (identical in every binding that extends this):
  * `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/
@@ -169,7 +168,7 @@ class A11yCoreBuilderBase {
    * Override this in a binding that does NOT cross such a boundary (Cypress
    * is the one binding today where this applies -- its test code runs in the
    * same browser tab as the page, so a live cross-realm function reference
-   * survives without stringification; see its own ROADMAP.md §2b/§2f) to
+   * survives without stringification) to
    * just return `{ ...rule }` unchanged.
    */
   _normalizeCustomRule(rule) {
@@ -293,7 +292,7 @@ class A11yCoreBuilderBase {
    * Must be implemented by every subclass -- entirely driver-specific, so
    * there's no shared behavior to provide here. Deliberately not `async`:
    * most bindings return a Promise from their own override, but Cypress's
-   * returns a Cypress chainable instead (see its own ROADMAP.md §2c) -- an
+   * returns a Cypress chainable instead -- an
    * `async` stub here would misleadingly imply every binding's analyze() is
    * Promise-shaped.
    */
