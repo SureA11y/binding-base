@@ -74,6 +74,10 @@ Pure Node logic, no browser needed:
 npm test
 ```
 
+## Maintainer
+
+Maintained by [Jorge Rumoroso](https://github.com/rumoroso).
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
