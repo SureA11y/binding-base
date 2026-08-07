@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumoroso/surea11y-core-binding-base.git"
+    "url": "git+https://github.com/SureA11y/binding-base.git"
   },
-  "homepage": "https://github.com/rumoroso/surea11y-core-binding-base#readme",
+  "homepage": "https://github.com/SureA11y/binding-base#readme",
   "bugs": {
-    "url": "https://github.com/rumoroso/surea11y-core-binding-base/issues"
+    "url": "https://github.com/SureA11y/binding-base/issues"
   },
   "engines": {
     "node": ">=18.13.0"
