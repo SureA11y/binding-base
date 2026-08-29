@@ -22,9 +22,10 @@
  *   any subset of it, e.g. already passed through .reportOnly()) -- see
  *   surea11y's docs/OUTPUT_SCHEMA.md for the shape.
  * @param {{ outcomes?: string[] }} [opts] Which outcomes to include.
- *   Defaults to ['fail', 'cantTell'] -- the two outcomes that ever carry
- *   occurrences (see OUTPUT_SCHEMA.md's note on `pass`/`notApplicable`
- *   always having occurrences: []).
+ *   Defaults to ['fail', 'cantTell'] -- the outcomes that report something
+ *   found. A `notApplicable` rule may still carry one occurrence saying why
+ *   it had nothing to judge, which is not a finding and stays out by
+ *   default; see OUTPUT_SCHEMA.md's note on occurrences.
  * @returns {string}
  */
 function formatFailures(checksResults, { outcomes = ['fail', 'cantTell'] } = {}) {
