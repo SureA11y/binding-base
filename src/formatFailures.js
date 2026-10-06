@@ -1,5 +1,7 @@
 'use strict';
 
+const { formatOccurrenceLocation } = require('./shadowDom');
+
 /**
  * Turns surea11y's checksResults array into a short, human-readable block
  * -- one entry per occurrence, not per rule, since a single rule can flag
@@ -12,7 +14,10 @@
  *
  * Deliberately a plain function, not a custom `expect` matcher -- it has no
  * dependency on any particular assertion library (node:assert, Jest, Vitest,
- * Chai, or a hand-rolled `if`/`throw` all work the same way). Identical
+ * Chai, or a hand-rolled `if`/`throw` all work the same way).
+ *
+ * An occurrence inside a shadow tree is located through its shadow hosts,
+ * as `my-app >>> my-card >>> img` (see formatOccurrenceLocation()). Identical
  * across every surea11y binding (Playwright/Puppeteer/Selenium/WebdriverIO/
  * Cypress) -- this is exactly the kind of framework-agnostic duplication
  * @surea11y/binding-base exists to hold in one place. See this package's
@@ -45,7 +50,8 @@ function formatFailures(checksResults, { outcomes = ['fail', 'cantTell'] } = {})
     for (const occurrence of check.occurrences) {
       n += 1;
       lines.push(`${n}) ${check.ruleId} (${check.severity}): ${occurrence.summary}`);
-      if (occurrence.selector) lines.push(`   at ${occurrence.selector}`);
+      const location = formatOccurrenceLocation(occurrence);
+      if (location) lines.push(`   at ${location}`);
       if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
     }
   }

@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // Internal scaffolding consumed by each surea11y binding's own
 // A11yCoreBuilder (see each binding's own hand-written .d.ts for the
 // consumer-facing types -- those declare a flat, non-inheriting
@@ -79,3 +80,24 @@ export function createInPageScan(runa11yCoreInPage: (...args: any[]) => unknown)
 export function rethrowEngineError<T>(value: T): T;
 
 export function formatFailures(checksResults: Array<Record<string, unknown>>, opts?: { outcomes?: Outcome[] }): string;
+
+/** Where an occurrence or a margin points: what queryOccurrenceElement() and formatOccurrenceLocation() read. */
+export interface OccurrenceLocation {
+  selector?: string;
+  /** The shadow hosts leading to the element, outermost first (@surea11y/core 1.10.0 and later). */
+  shadowHostSelectors?: string[];
+}
+
+/**
+ * Finds the element an occurrence points at, through its shadow hosts. Runs
+ * in the page and is self-contained, so a driver can serialize it. Returns
+ * null when anything on the way is missing.
+ */
+export function queryOccurrenceElement(
+  selector: string,
+  shadowHostSelectors?: string[] | null,
+  root?: { querySelector(selector: string): unknown } | null
+): Element | null;
+
+/** The occurrence's location for a person to read, as `host >>> selector`; empty without a selector. */
+export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null | undefined): string;
