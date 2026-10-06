@@ -4,6 +4,7 @@ const { A11yCoreBuilderBase, VALID_OUTCOMES } = require('./A11yCoreBuilderBase')
 const { canReconstructAsFunction, toReconstructableSource } = require('./customRuleReconstruction');
 const { ENGINE_ERROR_CODES, ENGINE_ERROR_KEY, EngineError, createInPageScan, rethrowEngineError } = require('./engineErrors');
 const { formatFailures } = require('./formatFailures');
+const { getScanGaps } = require('./scanGaps');
 const { queryOccurrenceElement, formatOccurrenceLocation } = require('./shadowDom');
 
 module.exports = {
@@ -17,6 +18,7 @@ module.exports = {
   createInPageScan,
   rethrowEngineError,
   formatFailures,
+  getScanGaps,
   queryOccurrenceElement,
   formatOccurrenceLocation
 };

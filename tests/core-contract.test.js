@@ -135,3 +135,23 @@ test('core contract: formatFailures() reads a real result', () => {
     page.close();
   }
 });
+
+test('core contract: formatFailures() and getScanGaps() read a real scoped result with a skipped custom rule', () => {
+  const page = pageScan();
+  try {
+    const result = quietly(() => page.scan(
+      new A11yCoreBuilderBase()
+        .include('main')
+        .include('#missing')
+        .withRules('img-alt-present')
+        .withCustomRules({ id: 'broken', runInPage: 'not a function (' })
+    ));
+    const text = formatFailures(result);
+    assert.match(text, /^1\) img-alt-present /);
+    assert.match(text, /\nPart of the scan scope was not scanned: no element matched "#missing"\.\n/);
+    assert.match(text, /\nCustom rule "broken" did not run: /);
+    assert.match(text, /\n\nScanned with @surea11y\/core \d+\.\d+\.\d+/);
+  } finally {
+    page.close();
+  }
+});

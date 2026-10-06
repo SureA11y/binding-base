@@ -79,7 +79,30 @@ export function createInPageScan(runa11yCoreInPage: (...args: any[]) => unknown)
 /** Throws an EngineError when `value` is one returned by a createInPageScan() function; otherwise returns `value`. */
 export function rethrowEngineError<T>(value: T): T;
 
-export function formatFailures(checksResults: Array<Record<string, unknown>>, opts?: { outcomes?: Outcome[] }): string;
+/** The parts of a scan result formatFailures() and getScanGaps() read (core's ScanResult has more). */
+export interface ScanResultLike {
+  checksResults: ReadonlyArray<object>;
+  /** How the contextSelector resolved; null without one (@surea11y/core 1.10.0 and later). */
+  contextMatch?: { elementCount: number; unmatchedSelectors: string[] } | null;
+  /** Custom rules that did not run, and why (@surea11y/core 1.10.0 and later). */
+  skippedCustomRules?: Array<{ id: string | null; reason: string }>;
+  engine?: { version?: string };
+}
+
+export type ScanGap =
+  | { kind: 'context-not-found'; message: string; selectors: string[] }
+  | { kind: 'context-partly-not-found'; message: string; selectors: string[] }
+  | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } };
+
+/** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
+export function getScanGaps(result: ScanResultLike): ScanGap[];
+
+/**
+ * A failure message for an assertion. Given a whole result, also lists its
+ * scan gaps and the engine version. Throws a TypeError for anything else
+ * than a result or a checksResults array.
+ */
+export function formatFailures(input: ScanResultLike | ReadonlyArray<object>, opts?: { outcomes?: Outcome[] }): string;
 
 /** Where an occurrence or a margin points: what queryOccurrenceElement() and formatOccurrenceLocation() read. */
 export interface OccurrenceLocation {

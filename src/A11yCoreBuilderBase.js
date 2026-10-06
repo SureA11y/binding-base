@@ -72,9 +72,9 @@ class A11yCoreBuilderBase {
    * possibly disjoint regions in one run (surea11y's contextSelector
    * accepts an array of selectors for exactly this -- see surea11y's
    * docs/ENGINE_OPTIONS.md). Since @surea11y/core 1.10.0, a selector that
-   * matches nothing scans nothing (the result's `contextMatch` says so),
-   * and one the browser can't parse throws an error with
-   * `code: 'INVALID_CONTEXT_SELECTOR'`.
+   * matches nothing scans nothing (the result's `contextMatch` says so, and
+   * getScanGaps() reports it), and one the browser can't parse throws an
+   * error with `code: 'INVALID_CONTEXT_SELECTOR'`.
    */
   include(selector) {
     if (selector) this._includeSelectors.push(selector);
