@@ -6,6 +6,23 @@ const { toReconstructableSource } = require('./customRuleReconstruction');
 // checksResults entry can carry.
 const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
+// withTags()/disableTags()/withRules()/disableRules() take a string or an
+// array of strings. Anything else (undefined from a missing config value,
+// a number) can name no rule or tag, so the engine would throw
+// INVALID_RUN_ONLY for it only once the page is open; throw it here, where
+// the call is, with the same code.
+function selectionValues(method, kind, value) {
+  const list = Array.isArray(value) ? value : [value];
+  for (const v of list) {
+    if (typeof v !== 'string' || !v.trim()) {
+      const err = new TypeError(`A11yCoreBuilder.${method}(): each ${kind} must be a non-empty string, not ${v === '' ? 'an empty string' : String(v)}.`);
+      err.code = 'INVALID_RUN_ONLY';
+      throw err;
+    }
+  }
+  return list;
+}
+
 /**
  * Shared, driver-agnostic scaffolding for every surea11y binding's own
  * `A11yCoreBuilder` (Playwright/Puppeteer/Selenium/WebdriverIO/Cypress).
@@ -54,7 +71,10 @@ class A11yCoreBuilderBase {
    * Scope the scan to one region. Call multiple times to scan several,
    * possibly disjoint regions in one run (surea11y's contextSelector
    * accepts an array of selectors for exactly this -- see surea11y's
-   * docs/ENGINE_OPTIONS.md).
+   * docs/ENGINE_OPTIONS.md). Since @surea11y/core 1.10.0, a selector that
+   * matches nothing scans nothing (the result's `contextMatch` says so),
+   * and one the browser can't parse throws an error with
+   * `code: 'INVALID_CONTEXT_SELECTOR'`.
    */
   include(selector) {
     if (selector) this._includeSelectors.push(selector);
@@ -84,27 +104,35 @@ class A11yCoreBuilderBase {
     return this;
   }
 
-  /** Only run rules carrying at least one of these tags. */
+  /**
+   * Only run rules carrying at least one of these tags. A tag the engine
+   * doesn't know is ignored with a warning; when none of them is known, the
+   * scan throws an error with `code: 'INVALID_RUN_ONLY'` (@surea11y/core
+   * 1.10.0 and later), so a typo can't pass a scan that ran nothing.
+   */
   withTags(tags) {
-    this._tags = this._tags.concat(Array.isArray(tags) ? tags : [tags]);
+    this._tags = this._tags.concat(selectionValues('withTags', 'tag', tags));
     return this;
   }
 
   /** Never run rules carrying any of these tags (applied after withTags). */
   disableTags(tags) {
-    this._excludeTags = this._excludeTags.concat(Array.isArray(tags) ? tags : [tags]);
+    this._excludeTags = this._excludeTags.concat(selectionValues('disableTags', 'tag', tags));
     return this;
   }
 
-  /** Only run these specific rule IDs (accepts with or without the  prefix). */
+  /**
+   * Only run these specific rule IDs (accepts with or without the
+   * `a11ycore-` prefix). Unknown IDs are handled as withTags() describes.
+   */
   withRules(ruleIds) {
-    this._includeRuleIds = this._includeRuleIds.concat(Array.isArray(ruleIds) ? ruleIds : [ruleIds]);
+    this._includeRuleIds = this._includeRuleIds.concat(selectionValues('withRules', 'rule ID', ruleIds));
     return this;
   }
 
   /** Never run these specific rule IDs (applied after withRules). */
   disableRules(ruleIds) {
-    this._excludeRuleIds = this._excludeRuleIds.concat(Array.isArray(ruleIds) ? ruleIds : [ruleIds]);
+    this._excludeRuleIds = this._excludeRuleIds.concat(selectionValues('disableRules', 'rule ID', ruleIds));
     return this;
   }
 

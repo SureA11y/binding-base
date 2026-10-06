@@ -289,3 +289,17 @@ test('A11yCoreBuilderBase: _applyReportOnly() tolerates a falsy/malformed result
 test('A11yCoreBuilderBase: analyze() throws by default -- every subclass must implement it', () => {
   assert.throws(() => new A11yCoreBuilderBase().analyze(), /must be implemented by a subclass/);
 });
+
+test('A11yCoreBuilderBase: withTags()/disableTags()/withRules()/disableRules() reject a value that is not a non-empty string, with INVALID_RUN_ONLY', () => {
+  for (const method of ['withTags', 'disableTags', 'withRules', 'disableRules']) {
+    for (const bad of [undefined, null, 42, '', '  ', ['wcag2a', undefined]]) {
+      const builder = new A11yCoreBuilderBase();
+      assert.throws(
+        () => builder[method](bad),
+        (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY' && err.message.startsWith(`A11yCoreBuilder.${method}(): `),
+        `${method}(${JSON.stringify(bad)})`
+      );
+      assert.strictEqual(builder._buildEngineArgs().runOnly, null, 'nothing recorded from a rejected call');
+    }
+  }
+});
