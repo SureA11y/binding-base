@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@surea11y/core": "^1.10.0",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3"
   }
 }
