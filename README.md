@@ -17,6 +17,10 @@ Extracted once five real consumers existed and the duplication was actually cost
 - **`getScanGaps(result)`** — what a result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `include()` scope matched nothing (since core 1.10.0 nothing is then scanned), `'context-partly-not-found'` when some of several selectors matched nothing, and one `'custom-rule-skipped'` per entry of `skippedCustomRules`. Each has a `message`. A result from an earlier core gives `[]`.
 - **`queryOccurrenceElement(selector, shadowHostSelectors, root?)`** — finds the element an occurrence points at, through its shadow hosts. Since core 1.10.0 an occurrence inside a shadow tree carries `shadowHostSelectors`, and its `selector` holds only inside the last host's shadow root, so looking it up in the document finds the wrong element or none. Self-contained, so a driver can send it into the page. **`formatOccurrenceLocation(occurrence)`** gives the same location as text, `host >>> selector`.
 
+### `withPacks(packs)` and `_packScript()`
+
+Packs from `@surea11y/core/pack` (rules, a standard or a checklist, and their profiles and messages; see core's `docs/ENGINE_OPTIONS.md`, "Packs") need `@surea11y/core` 1.11 or later. A pack is an object prepared in Node and can't cross into the page, so `withPacks()` does two things: `_buildEngineArgs()` names the packs in `engineOptions.packs` (as `name@version`), and `_packScript()` returns the script that registers them in a page, built once per set of packs. A binding's `analyze()` injects that script after the engine's bundle, in every frame it scans; without packs it is `null`. A pack surea11y can't run throws when the script is built.
+
 ### `formatFailures(resultOrChecks, { outcomes? })`
 
 Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as it always has. Given the whole result, it also adds the result's scan gaps and the core release that produced it (`engine.version`), and a scan whose scope matched nothing does not read as clean:

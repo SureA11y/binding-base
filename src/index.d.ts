@@ -36,12 +36,16 @@ export class A11yCoreBuilderBase {
   disableRules(ruleIds: string | string[]): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
+  /** Packs from @surea11y/core/pack; the scan names them, and analyze() injects _packScript(). */
+  withPacks(packs: object | object[]): this;
   reportOnly(outcomes: Outcome | Outcome[]): this;
   elementRef(enabled?: boolean): this;
   frames(enabled?: boolean): this;
   analyze(): unknown;
   _normalizeCustomRule(rule: CustomRuleDescriptor): CustomRuleDescriptor;
   _buildEngineArgs(): EngineArgs;
+  /** The script that registers this scan's packs in a page, or null without packs. */
+  _packScript(): string | null;
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
 }
 

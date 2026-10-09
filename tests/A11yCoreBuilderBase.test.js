@@ -303,3 +303,35 @@ test('A11yCoreBuilderBase: withTags()/disableTags()/withRules()/disableRules() r
     }
   }
 });
+
+// --- packs ---------------------------------------------------------------------------
+
+const PACK = {
+  name: '@acme/a11y-rules',
+  version: '1.0.0',
+  namespace: 'acme',
+  core: '*',
+  rules: [{ id: 'acme-always', meta: { title: 'Always passes', tags: ['acme'] }, runInPage: () => ({ outcome: 'pass' }) }]
+};
+
+test('A11yCoreBuilderBase: withPacks() names the packs in engineOptions.packs, after any already given', () => {
+  const b = new A11yCoreBuilderBase().options({ packs: ['@other/pack@2.0.0'] }).withPacks(PACK);
+  assert.deepStrictEqual(b._buildEngineArgs().engineOptions.packs, ['@other/pack@2.0.0', '@acme/a11y-rules@1.0.0']);
+  assert.strictEqual(new A11yCoreBuilderBase()._buildEngineArgs().engineOptions.packs, undefined);
+});
+
+test('A11yCoreBuilderBase: _packScript() registers the packs when run in a page, and is built once', () => {
+  const b = new A11yCoreBuilderBase().withPacks([PACK]);
+  const script = b._packScript();
+  assert.strictEqual(b._packScript(), script);
+  const page = {};
+  new Function('globalThis', script)(page);
+  assert.deepStrictEqual(Object.keys(page.__surea11yPacks), ['@acme/a11y-rules@1.0.0']);
+  assert.strictEqual(new A11yCoreBuilderBase()._packScript(), null);
+});
+
+test('A11yCoreBuilderBase: withPacks() refuses what is not a pack, and _packScript() a pack surea11y cannot run', () => {
+  assert.throws(() => new A11yCoreBuilderBase().withPacks('@acme/a11y-rules'), /each pack must be a pack object/);
+  const old = new A11yCoreBuilderBase().withPacks({ ...PACK, core: '^99.0.0' });
+  assert.throws(() => old._packScript(), /supports core/);
+});
