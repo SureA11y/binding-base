@@ -65,6 +65,8 @@ class A11yCoreBuilderBase {
     this._reportOutcomes = null;
     this._elementRef = false;
     this._customRules = [];
+    this._packs = [];
+    this._packScriptSource = null;
   }
 
   /**
@@ -183,6 +185,48 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * Add packs from @surea11y/core/pack (rules, a standard or a checklist, and
+   * their profiles and messages) to this scan -- see surea11y's
+   * docs/ENGINE_OPTIONS.md, "Packs". Accumulates across calls. A pack is an
+   * object prepared in Node, so it can't cross into the page: the scan names
+   * the packs in engineOptions.packs (as name@version), and a subclass's
+   * analyze() injects `_packScript()` into each page or frame after the
+   * engine's bundle, which registers them there. surea11y checks each pack
+   * when the script is built; one it can't run throws then. Packs need
+   * @surea11y/core 1.11 or later.
+   */
+  withPacks(packs) {
+    const list = Array.isArray(packs) ? packs : [packs];
+    for (const pack of list) {
+      if (!pack || typeof pack !== 'object' || typeof pack.name !== 'string' || typeof pack.version !== 'string') {
+        throw new Error('A11yCoreBuilder.withPacks(): each pack must be a pack object ({ name, version, namespace, core, ... }) from @surea11y/core/pack.');
+      }
+    }
+    this._packs.push(...list);
+    this._packScriptSource = null;
+    return this;
+  }
+
+  /**
+   * The script that registers this scan's packs in a page, for a subclass's
+   * analyze() to inject after the engine's bundle, in every frame it scans;
+   * null without packs. Built once per set of packs (surea11y's packScript).
+   */
+  _packScript() {
+    if (!this._packs.length) return null;
+    if (this._packScriptSource === null) {
+      let packScript;
+      try {
+        ({ packScript } = require('@surea11y/core/pack'));
+      } catch (err) {
+        throw new Error('A11yCoreBuilder.withPacks(): packs need @surea11y/core 1.11 or later, which runs them.', { cause: err });
+      }
+      this._packScriptSource = packScript(this._packs);
+    }
+    return this._packScriptSource;
+  }
+
+  /**
    * Per-rule normalization step for `withCustomRules()`. Default behavior
    * (correct for Playwright/Puppeteer/Selenium/WebdriverIO, i.e. every
    * binding whose driver crosses a real serialization boundary --
@@ -272,6 +316,12 @@ class A11yCoreBuilderBase {
       // clobbering the other.
       const existing = Array.isArray(this._engineOptions.customRules) ? this._engineOptions.customRules : [];
       engineOptions.customRules = existing.concat(this._customRules);
+    }
+    if (this._packs.length) {
+      // The page has the packs registered by _packScript(); the scan names
+      // them, after any names already given through a raw .options({ packs }).
+      const existing = Array.isArray(this._engineOptions.packs) ? this._engineOptions.packs : [];
+      engineOptions.packs = existing.concat(this._packs.map((p) => `${p.name}@${p.version}`));
     }
     if (this._excludeSelectors.length) {
       engineOptions.excludeSelectors = this._excludeSelectors;
