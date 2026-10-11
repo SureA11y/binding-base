@@ -107,3 +107,14 @@ test('formatFailures(): throws a TypeError for a frames(true) tree or anything e
     assert.throws(() => formatFailures(bad), TypeError);
   }
 });
+
+test('getScanGaps(): one gap per skipped pack, with the engine\'s reason', () => {
+  assert.deepStrictEqual(getScanGaps(result({ skippedPacks: [{ name: '@acme/a11y-rules', reason: 'it supports core ^2.0.0, and this is core 1.11.1' }, { reason: '' }] })), [
+    {
+      kind: 'pack-skipped',
+      pack: { name: '@acme/a11y-rules', reason: 'it supports core ^2.0.0, and this is core 1.11.1' },
+      message: 'Pack "@acme/a11y-rules" did not run: it supports core ^2.0.0, and this is core 1.11.1.'
+    },
+    { kind: 'pack-skipped', pack: { name: null, reason: 'no reason given' }, message: 'Pack without a name did not run: no reason given.' }
+  ]);
+});

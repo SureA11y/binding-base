@@ -15,10 +15,12 @@ function quoteList(values) {
  *   nothing; the others were scanned.
  * - `custom-rule-skipped`: a custom rule (withCustomRules()) did not run,
  *   one gap per rule, with the engine's reason.
+ * - `pack-skipped`: a pack (withPacks(), @surea11y/core 1.11 and later) did
+ *   not run, one gap per pack, with the engine's reason.
  *
  * @param {object} result one scan result (for a frames(true) scan, call it
  *   on `topFrame` and on each entry of `frames` that has `checksResults`)
- * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string } }>}
+ * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string }, pack?: { name: (string|null), reason: string } }>}
  */
 function getScanGaps(result) {
   if (!result || typeof result !== 'object' || !Array.isArray(result.checksResults)) {
@@ -55,6 +57,17 @@ function getScanGaps(result) {
       kind: 'custom-rule-skipped',
       rule: { id, reason },
       message: `Custom rule ${id ? JSON.stringify(id) : 'without an id'} did not run: ${reason}.`
+    });
+  }
+
+  const skippedPacks = Array.isArray(result.skippedPacks) ? result.skippedPacks : [];
+  for (const pack of skippedPacks) {
+    const name = pack && typeof pack.name === 'string' && pack.name ? pack.name : null;
+    const reason = pack && pack.reason ? String(pack.reason) : 'no reason given';
+    gaps.push({
+      kind: 'pack-skipped',
+      pack: { name, reason },
+      message: `Pack ${name ? JSON.stringify(name) : 'without a name'} did not run: ${reason}.`
     });
   }
 

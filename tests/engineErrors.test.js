@@ -79,5 +79,5 @@ test('rethrowEngineError(): returns anything that is not an engine error unchang
 });
 
 test('ENGINE_ERROR_CODES lists the codes core types as EngineErrorCode', () => {
-  assert.deepStrictEqual(ENGINE_ERROR_CODES, ['INVALID_RUN_ONLY', 'INVALID_CONTEXT_SELECTOR']);
+  assert.deepStrictEqual(ENGINE_ERROR_CODES, ['INVALID_RUN_ONLY', 'INVALID_CONTEXT_SELECTOR', 'INVALID_ENGINE_OPTIONS', 'PAGE_BUILTINS_BROKEN']);
 });

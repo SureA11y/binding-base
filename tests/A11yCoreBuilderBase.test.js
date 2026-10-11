@@ -303,3 +303,64 @@ test('A11yCoreBuilderBase: withTags()/disableTags()/withRules()/disableRules() r
     }
   }
 });
+
+// --- packs ---------------------------------------------------------------------------
+
+const PACK = {
+  name: '@acme/a11y-rules',
+  version: '1.0.0',
+  namespace: 'acme',
+  core: '*',
+  rules: [{ id: 'acme-always', meta: { title: 'Always passes', tags: ['acme'] }, runInPage: () => ({ outcome: 'pass' }) }]
+};
+
+test('A11yCoreBuilderBase: withPacks() names the packs in engineOptions.packs, after any already given', () => {
+  const b = new A11yCoreBuilderBase().options({ packs: ['@other/pack@2.0.0'] }).withPacks(PACK);
+  assert.deepStrictEqual(b._buildEngineArgs().engineOptions.packs, ['@other/pack@2.0.0', '@acme/a11y-rules@1.0.0']);
+  assert.strictEqual(new A11yCoreBuilderBase()._buildEngineArgs().engineOptions.packs, undefined);
+});
+
+test('A11yCoreBuilderBase: _packScript() is built once per set of packs, and is null without packs', () => {
+  const b = new A11yCoreBuilderBase().withPacks([PACK]);
+  const script = b._packScript();
+  assert.strictEqual(typeof script, 'string');
+  assert.strictEqual(b._packScript(), script);
+  b.withPacks({ ...PACK, name: '@acme/more-rules', namespace: 'more', rules: [] });
+  assert.notStrictEqual(b._packScript(), script);
+  assert.strictEqual(new A11yCoreBuilderBase()._packScript(), null);
+});
+
+// --- WCAG targets and best practices -------------------------------------------------
+
+test('A11yCoreBuilderBase: withWcag() sets runOnly.wcag, replaced by a later call, beside tags and rules', () => {
+  const b = new A11yCoreBuilderBase().withWcag('2.1', 'A').withWcag('2.2', 'AA').withRules('region');
+  assert.deepStrictEqual(b._buildEngineArgs().runOnly, {
+    includeRuleIds: ['region'],
+    excludeRuleIds: undefined,
+    tags: undefined,
+    excludeTags: undefined,
+    wcag: { version: '2.2', level: 'AA' }
+  });
+  assert.deepStrictEqual(new A11yCoreBuilderBase().withWcag(2.2)._buildEngineArgs().runOnly.wcag, { version: '2.2', level: 'AA' });
+});
+
+test('A11yCoreBuilderBase: withWcag() throws INVALID_RUN_ONLY for a version or level the engine has not', () => {
+  for (const [version, level] of [['3.0', 'AA'], ['2.2', 'AAAA'], [undefined, 'AA'], ['2.2', 'aa']]) {
+    assert.throws(
+      () => new A11yCoreBuilderBase().withWcag(version, level),
+      (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY' && /withWcag\(\)/.test(err.message),
+      `withWcag(${JSON.stringify(version)}, ${JSON.stringify(level)})`
+    );
+  }
+});
+
+test('A11yCoreBuilderBase: withBestPractices() sets runOnly.bestPractices, and withBestPractices(false) clears it', () => {
+  assert.strictEqual(new A11yCoreBuilderBase().withBestPractices()._buildEngineArgs().runOnly.bestPractices, true);
+  assert.strictEqual(new A11yCoreBuilderBase().withBestPractices().withBestPractices(false)._buildEngineArgs().runOnly, null);
+});
+
+test('A11yCoreBuilderBase: withPacks() refuses what is not a pack, and _packScript() a pack surea11y cannot run', () => {
+  assert.throws(() => new A11yCoreBuilderBase().withPacks('@acme/a11y-rules'), /each pack must be a pack object/);
+  const old = new A11yCoreBuilderBase().withPacks({ ...PACK, core: '^99.0.0' });
+  assert.throws(() => old._packScript(), /supports core/);
+});

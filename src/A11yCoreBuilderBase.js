@@ -6,6 +6,10 @@ const { toReconstructableSource } = require('./customRuleReconstruction');
 // checksResults entry can carry.
 const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
+// What surea11y's runOnly.wcag accepts.
+const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
+const WCAG_LEVELS = ['A', 'AA', 'AAA'];
+
 // withTags()/disableTags()/withRules()/disableRules() take a string or an
 // array of strings. Anything else (undefined from a missing config value,
 // a number) can name no rule or tag, so the engine would throw
@@ -40,10 +44,11 @@ function selectionValues(method, kind, value) {
  *
  * Mutability contract (identical in every binding that extends this):
  * `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/
- * `disableTags()`/`options()`/`withCustomRules()` accumulate across calls,
- * with no reset between `analyze()` calls -- create one builder per scan.
- * `reportOnly()`/`frames()`/`elementRef()` are the exception: each call
- * replaces the previous value rather than merging with it.
+ * `disableTags()`/`options()`/`withCustomRules()`/`withPacks()` accumulate
+ * across calls, with no reset between `analyze()` calls -- create one
+ * builder per scan. `reportOnly()`/`frames()`/`elementRef()`/`withWcag()`/
+ * `withBestPractices()` are the exception: each call replaces the previous
+ * value rather than merging with it.
  */
 class A11yCoreBuilderBase {
   /**
@@ -61,10 +66,14 @@ class A11yCoreBuilderBase {
     this._excludeRuleIds = [];
     this._tags = [];
     this._excludeTags = [];
+    this._wcag = null;
+    this._bestPractices = false;
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
     this._customRules = [];
+    this._packs = [];
+    this._packScriptSource = null;
   }
 
   /**
@@ -112,6 +121,37 @@ class A11yCoreBuilderBase {
    */
   withTags(tags) {
     this._tags = this._tags.concat(selectionValues('withTags', 'tag', tags));
+    return this;
+  }
+
+  /**
+   * Run the rules for a WCAG conformance target: `withWcag('2.2', 'AA')`
+   * runs those of the version's criteria at that level and below
+   * (surea11y's runOnly.wcag, @surea11y/core 1.11 and later). withTags()
+   * and withRules() add to its rules; the disable methods apply after.
+   * Calling it again replaces the target.
+   */
+  withWcag(version, level = 'AA') {
+    const v = typeof version === 'number' ? version.toFixed(1) : version;
+    if (!WCAG_VERSIONS.includes(v) || !WCAG_LEVELS.includes(level)) {
+      const err = new TypeError(
+        `A11yCoreBuilder.withWcag(): expected a version (${WCAG_VERSIONS.join(', ')}) and a level (${WCAG_LEVELS.join(', ')}), not ${JSON.stringify(version)}, ${JSON.stringify(level)}.`
+      );
+      err.code = 'INVALID_RUN_ONLY';
+      throw err;
+    }
+    this._wcag = { version: v, level };
+    return this;
+  }
+
+  /**
+   * Also run the best-practice rules, those that name no WCAG criterion
+   * (surea11y's runOnly.bestPractices, @surea11y/core 1.11 and later). On its
+   * own it runs the best practices only; beside a profile in options(), it
+   * adds them to the profile's rules.
+   */
+  withBestPractices(enabled = true) {
+    this._bestPractices = enabled !== false;
     return this;
   }
 
@@ -180,6 +220,48 @@ class A11yCoreBuilderBase {
       this._customRules.push(this._normalizeCustomRule(rule));
     }
     return this;
+  }
+
+  /**
+   * Add packs from @surea11y/core/pack (rules, a standard or a checklist, and
+   * their profiles and messages) to this scan -- see surea11y's
+   * docs/ENGINE_OPTIONS.md, "Packs". Accumulates across calls. A pack is an
+   * object prepared in Node, so it can't cross into the page: the scan names
+   * the packs in engineOptions.packs (as name@version), and a subclass's
+   * analyze() injects `_packScript()` into each page or frame after the
+   * engine's bundle, which registers them there. surea11y checks each pack
+   * when the script is built; one it can't run throws then. Packs need
+   * @surea11y/core 1.11 or later.
+   */
+  withPacks(packs) {
+    const list = Array.isArray(packs) ? packs : [packs];
+    for (const pack of list) {
+      if (!pack || typeof pack !== 'object' || typeof pack.name !== 'string' || typeof pack.version !== 'string') {
+        throw new Error('A11yCoreBuilder.withPacks(): each pack must be a pack object ({ name, version, namespace, core, ... }) from @surea11y/core/pack.');
+      }
+    }
+    this._packs.push(...list);
+    this._packScriptSource = null;
+    return this;
+  }
+
+  /**
+   * The script that registers this scan's packs in a page, for a subclass's
+   * analyze() to inject after the engine's bundle, in every frame it scans;
+   * null without packs. Built once per set of packs (surea11y's packScript).
+   */
+  _packScript() {
+    if (!this._packs.length) return null;
+    if (this._packScriptSource === null) {
+      let packScript;
+      try {
+        ({ packScript } = require('@surea11y/core/pack'));
+      } catch (err) {
+        throw new Error('A11yCoreBuilder.withPacks(): packs need @surea11y/core 1.11 or later, which runs them.', { cause: err });
+      }
+      this._packScriptSource = packScript(this._packs);
+    }
+    return this._packScriptSource;
   }
 
   /**
@@ -273,6 +355,12 @@ class A11yCoreBuilderBase {
       const existing = Array.isArray(this._engineOptions.customRules) ? this._engineOptions.customRules : [];
       engineOptions.customRules = existing.concat(this._customRules);
     }
+    if (this._packs.length) {
+      // The page has the packs registered by _packScript(); the scan names
+      // them, after any names already given through a raw .options({ packs }).
+      const existing = Array.isArray(this._engineOptions.packs) ? this._engineOptions.packs : [];
+      engineOptions.packs = existing.concat(this._packs.map((p) => `${p.name}@${p.version}`));
+    }
     if (this._excludeSelectors.length) {
       engineOptions.excludeSelectors = this._excludeSelectors;
     }
@@ -294,13 +382,15 @@ class A11yCoreBuilderBase {
       engineOptions.rules = rules;
     }
 
-    const hasRunOnly = this._includeRuleIds.length || this._excludeRuleIds.length || this._tags.length || this._excludeTags.length;
+    const hasRunOnly = this._includeRuleIds.length || this._excludeRuleIds.length || this._tags.length || this._excludeTags.length || this._wcag || this._bestPractices;
     const runOnly = hasRunOnly
       ? {
         includeRuleIds: this._includeRuleIds.length ? this._includeRuleIds : undefined,
         excludeRuleIds: this._excludeRuleIds.length ? this._excludeRuleIds : undefined,
         tags: this._tags.length ? this._tags : undefined,
-        excludeTags: this._excludeTags.length ? this._excludeTags : undefined
+        excludeTags: this._excludeTags.length ? this._excludeTags : undefined,
+        ...(this._wcag ? { wcag: { ...this._wcag } } : {}),
+        ...(this._bestPractices ? { bestPractices: true } : {})
       }
       : null;
 

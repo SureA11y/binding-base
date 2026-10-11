@@ -12,10 +12,18 @@ import {
   rethrowEngineError
 } from '../../src/index';
 import { runa11yCoreInPage } from '@surea11y/core';
+import { definePack } from '@surea11y/core/pack';
 
 declare const result: ScanResult;
 
-const builder = new A11yCoreBuilderBase().withRules('img-alt-present').include('main');
+const pack = definePack({ name: '@acme/a11y-rules', version: '1.0.0', namespace: 'acme', core: '^1.11.1' });
+const builder = new A11yCoreBuilderBase()
+  .withRules('img-alt-present')
+  .include('main')
+  .withWcag('2.2', 'AA')
+  .withBestPractices()
+  .withPacks([pack]);
+const packScript: string | null = builder._packScript();
 const { contextSelector, engineOptions, runOnly } = builder._buildEngineArgs();
 const scan = createInPageScan(runa11yCoreInPage);
 const scanned: ScanResult = rethrowEngineError(result);
@@ -26,6 +34,7 @@ const message: string = formatFailures(filtered) + formatFailures(filtered.check
 
 for (const gap of getScanGaps(result)) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
+  else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
   else gap.selectors.join(', ');
 }
 
@@ -37,6 +46,7 @@ try {
   rethrowEngineError({});
 } catch (e) {
   if (e instanceof EngineError && e.code === 'INVALID_CONTEXT_SELECTOR') String(e.selector);
+  if (e instanceof EngineError && e.code === 'INVALID_ENGINE_OPTIONS') String(e.message);
 }
 
-export { message, element, where };
+export { message, element, where, packScript };
