@@ -35,7 +35,7 @@ builder.withPacks(policy).options({ profile: 'acme-policy' });
 
 ### `formatFailures(resultOrChecks, { outcomes? })`
 
-Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as it always has. Given the whole result, it also adds the result's scan gaps and the core release that produced it (`engine.version`), and a scan whose scope matched nothing does not read as clean:
+Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as it always has. Given the whole result, it also adds the result's scan gaps and the core release that produced it (`engine.version`), and a scan that left something out does not read as clean: with no findings, it opens with "No accessibility violations found in what was scanned." rather than "No accessibility violations found.", or, when the scope matched nothing, with the gap itself:
 
 ```
 1) img-alt-present (serious): Image has no text alternative.

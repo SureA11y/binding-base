@@ -4,6 +4,7 @@ const { formatOccurrenceLocation } = require('./shadowDom');
 const { getScanGaps } = require('./scanGaps');
 
 const NO_FINDINGS = 'No accessibility violations found.';
+const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was scanned.';
 
 /**
  * Turns surea11y's results into a short, human-readable block -- one entry
@@ -56,7 +57,8 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'] } = {}) {
   const gaps = getScanGaps(input);
   const blocks = [];
   if (findings) blocks.push(findings);
-  else if (!gaps.some((g) => g.kind === 'context-not-found')) blocks.push(NO_FINDINGS);
+  else if (!gaps.length) blocks.push(NO_FINDINGS);
+  else if (!gaps.some((g) => g.kind === 'context-not-found')) blocks.push(NO_FINDINGS_IN_SCANNED);
   if (gaps.length) blocks.push(gaps.map((g) => g.message).join('\n'));
   const version = input.engine && typeof input.engine.version === 'string' ? input.engine.version : null;
   if (version) blocks.push(`Scanned with @surea11y/core ${version}.`);

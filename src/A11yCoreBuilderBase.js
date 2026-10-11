@@ -6,6 +6,17 @@ const { toReconstructableSource } = require('./customRuleReconstruction');
 // checksResults entry can carry.
 const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
+// @surea11y/core/pack prepares packs with Node's fs and vm, so it is loaded
+// through Node's own require with the id in a variable, which a bundler
+// doesn't follow: a Cypress spec bundles this package for the browser.
+const CORE_PACK = '@surea11y/core/pack';
+function loadCorePack() {
+  if (typeof module !== 'object' || !module || typeof module.require !== 'function') {
+    throw new Error('packs are prepared in Node');
+  }
+  return module.require(CORE_PACK);
+}
+
 // What surea11y's runOnly.wcag accepts.
 const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
 const WCAG_LEVELS = ['A', 'AA', 'AAA'];
@@ -255,7 +266,7 @@ class A11yCoreBuilderBase {
     if (this._packScriptSource === null) {
       let packScript;
       try {
-        ({ packScript } = require('@surea11y/core/pack'));
+        ({ packScript } = loadCorePack());
       } catch (err) {
         throw new Error('A11yCoreBuilder.withPacks(): packs need @surea11y/core 1.11 or later, which runs them.', { cause: err });
       }

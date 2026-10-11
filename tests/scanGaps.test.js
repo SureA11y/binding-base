@@ -118,3 +118,14 @@ test('getScanGaps(): one gap per skipped pack, with the engine\'s reason', () =>
     { kind: 'pack-skipped', pack: { name: null, reason: 'no reason given' }, message: 'Pack without a name did not run: no reason given.' }
   ]);
 });
+
+test('formatFailures(result): no findings beside a skipped pack or custom rule says so of what was scanned', () => {
+  const skipped = { skippedPacks: [{ name: '@acme/a11y-rules', reason: 'it supports core ^2.0.0, and this is core 1.11.1' }] };
+  assert.strictEqual(
+    formatFailures(result(skipped)),
+    'No accessibility violations found in what was scanned.\n\n' +
+      'Pack "@acme/a11y-rules" did not run: it supports core ^2.0.0, and this is core 1.11.1.\n\n' +
+      'Scanned with @surea11y/core 1.10.0.'
+  );
+  assert.match(formatFailures(result({ contextMatch: { elementCount: 1, unmatchedSelectors: ['#nav'] } })), /^No accessibility violations found in what was scanned\.\n\n/);
+});
