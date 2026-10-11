@@ -155,3 +155,114 @@ test('core contract: formatFailures() and getScanGaps() read a real scoped resul
     page.close();
   }
 });
+
+// --- 1.11: packs, WCAG targets, best practices, strict options --------------------
+
+const { definePack, wcagTags } = require('@surea11y/core/pack');
+const { getScanGaps } = require('../src/index.js');
+
+const MARQUEE_PAGE = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"><marquee>News</marquee></main></body></html>';
+
+const acme = definePack({
+  name: '@acme/a11y-rules',
+  version: '1.0.0',
+  namespace: 'acme',
+  core: '^1.11.1',
+  rules: [
+    {
+      id: 'acme-no-marquee',
+      meta: { title: 'No marquee', tags: ['acme'] },
+      runInPage: (ctx) => {
+        const m = ctx.document.querySelector('marquee');
+        return m
+          ? { outcome: 'fail', occurrences: [ctx.helpers.reportOccurrence(m, { summary: 'A marquee moves on its own.' })] }
+          : { outcome: 'pass', occurrences: [] };
+      }
+    }
+  ]
+});
+
+const city = definePack({
+  name: '@city/web-policy',
+  title: 'City web policy',
+  version: '2026.1.0',
+  namespace: 'city',
+  core: '^1.11.1',
+  profiles: { 'city-2026': { tags: wcagTags('2.2'), exclude: { rules: ['target-size-minimum'] } } },
+  rollups: [{ id: 'city-images', title: 'Images', checksIds: ['img-alt-present'] }]
+});
+
+function packPage(builder, html = MARQUEE_PAGE) {
+  const page = pageScan(html);
+  page.window.eval(builder._packScript());
+  return page;
+}
+
+test('core contract: a pack registered by _packScript() runs, and the result names it', () => {
+  const builder = new A11yCoreBuilderBase().withPacks(acme).withRules('acme-no-marquee');
+  const page = packPage(builder);
+  try {
+    const result = page.scan(builder);
+    assert.deepStrictEqual(result.engine.packs, ['@acme/a11y-rules@1.0.0']);
+    assert.deepStrictEqual(result.checksResults.map((r) => [r.ruleId, r.outcome]), [['acme-no-marquee', 'fail']]);
+    assert.deepStrictEqual(getScanGaps(result), []);
+  } finally {
+    page.close();
+  }
+});
+
+test("core contract: a pack's checklist profile runs through options({ profile })", () => {
+  const builder = new A11yCoreBuilderBase().withPacks(city).options({ profile: 'city-2026' });
+  const page = packPage(builder);
+  try {
+    const result = page.scan(builder);
+    assert.strictEqual(result.engine.profile, 'city-2026');
+    assert.ok(!result.checksResults.some((r) => r.ruleId === 'target-size-minimum'));
+    const items = result.rulesResults.filter((r) => r.meta && r.meta.standard === 'City web policy');
+    assert.deepStrictEqual(items.map((r) => [r.ruleId, r.outcome]), [['city-images', 'fail']]);
+  } finally {
+    page.close();
+  }
+});
+
+test('core contract: a pack the page does not run is a pack-skipped gap, not a clean scan', () => {
+  const registered = new A11yCoreBuilderBase().withPacks(acme);
+  const page = packPage(registered);
+  try {
+    const result = quietly(() => page.scan(new A11yCoreBuilderBase().withPacks(city).withRules('img-alt-present')));
+    const gaps = getScanGaps(result);
+    assert.deepStrictEqual(gaps.map((g) => [g.kind, g.pack.name]), [['pack-skipped', '@city/web-policy@2026.1.0']]);
+    assert.match(formatFailures(result), /\nPack "@city\/web-policy@2026\.1\.0" did not run: /);
+  } finally {
+    page.close();
+  }
+});
+
+test('core contract: withWcag() and withBestPractices() select what the engine runs', () => {
+  const page = pageScan();
+  try {
+    const target = page.scan(new A11yCoreBuilderBase().withWcag('2.2', 'AA'));
+    assert.strictEqual(target.engine.wcagVersion, '2.2');
+    const ids = target.checksResults.map((r) => r.ruleId);
+    assert.ok(ids.includes('img-alt-present'));
+    assert.ok(!ids.includes('duplicate-id'), '4.1.1 is no part of a WCAG 2.2 target');
+    assert.ok(!ids.includes('region'), 'a best practice is no part of a WCAG target');
+
+    const withBest = page.scan(new A11yCoreBuilderBase().withWcag('2.2', 'AA').withBestPractices());
+    assert.ok(withBest.checksResults.some((r) => r.ruleId === 'region'));
+  } finally {
+    page.close();
+  }
+});
+
+test('core contract: strictOptions rejects a misspelt option with INVALID_ENGINE_OPTIONS', () => {
+  const page = pageScan();
+  try {
+    assert.throws(
+      () => page.scan(new A11yCoreBuilderBase().options({ strictOptions: true, lcoale: 'fr' })),
+      (err) => err.code === 'INVALID_ENGINE_OPTIONS' && /lcoale/.test(err.message)
+    );
+  } finally {
+    page.close();
+  }
+});

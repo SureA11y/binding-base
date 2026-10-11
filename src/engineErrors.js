@@ -2,10 +2,12 @@
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
 
-// The codes @surea11y/core (1.10.0 and later) puts on the errors it throws
-// for input it cannot use: a runOnly or rule/tag list that names nothing it
-// knows, and a contextSelector the browser cannot parse.
-const ENGINE_ERROR_CODES = ['INVALID_RUN_ONLY', 'INVALID_CONTEXT_SELECTOR'];
+// The codes @surea11y/core puts on the errors it throws for input it cannot
+// use: a runOnly or rule/tag list that names nothing it knows, a
+// contextSelector the browser cannot parse (both 1.10.0 and later), an
+// option strictOptions rejects, and a page whose scripts broke a JavaScript
+// built-in the engine relies on (both 1.11.0 and later).
+const ENGINE_ERROR_CODES = ['INVALID_RUN_ONLY', 'INVALID_CONTEXT_SELECTOR', 'INVALID_ENGINE_OPTIONS', 'PAGE_BUILTINS_BROKEN'];
 
 // The key a scan run through createInPageScan() returns its error under.
 const ENGINE_ERROR_KEY = '__surea11yEngineError';

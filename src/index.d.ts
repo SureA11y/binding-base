@@ -26,6 +26,15 @@ export interface EngineArgs {
   runOnly: Record<string, unknown> | null;
 }
 
+export type WcagVersion = '2.0' | '2.1' | '2.2';
+export type WcagLevel = 'A' | 'AA' | 'AAA';
+
+/** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
+export interface PackLike {
+  name: string;
+  version: string;
+}
+
 export class A11yCoreBuilderBase {
   constructor(opts?: { url?: string });
   include(selector: string): this;
@@ -34,10 +43,14 @@ export class A11yCoreBuilderBase {
   disableTags(tags: string | string[]): this;
   withRules(ruleIds: string | string[]): this;
   disableRules(ruleIds: string | string[]): this;
+  /** Run the rules for a WCAG conformance target (@surea11y/core 1.11 and later). */
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  /** Also run the best-practice rules, those that name no WCAG criterion (@surea11y/core 1.11 and later). */
+  withBestPractices(enabled?: boolean): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
   /** Packs from @surea11y/core/pack; the scan names them, and analyze() injects _packScript(). */
-  withPacks(packs: object | object[]): this;
+  withPacks(packs: PackLike | PackLike[]): this;
   reportOnly(outcomes: Outcome | Outcome[]): this;
   elementRef(enabled?: boolean): this;
   frames(enabled?: boolean): this;
@@ -50,7 +63,11 @@ export class A11yCoreBuilderBase {
 }
 
 /** The `code` on an error @surea11y/core throws for input it cannot use (1.10.0 and later). */
-export type EngineErrorCode = 'INVALID_RUN_ONLY' | 'INVALID_CONTEXT_SELECTOR';
+export type EngineErrorCode =
+  | 'INVALID_RUN_ONLY'
+  | 'INVALID_CONTEXT_SELECTOR'
+  | 'INVALID_ENGINE_OPTIONS'
+  | 'PAGE_BUILTINS_BROKEN';
 
 export const ENGINE_ERROR_CODES: EngineErrorCode[];
 
@@ -90,13 +107,16 @@ export interface ScanResultLike {
   contextMatch?: { elementCount: number; unmatchedSelectors: string[] } | null;
   /** Custom rules that did not run, and why (@surea11y/core 1.10.0 and later). */
   skippedCustomRules?: Array<{ id: string | null; reason: string }>;
+  /** Packs that did not run, and why (@surea11y/core 1.11 and later). */
+  skippedPacks?: Array<{ name: string | null; reason: string }>;
   engine?: { version?: string };
 }
 
 export type ScanGap =
   | { kind: 'context-not-found'; message: string; selectors: string[] }
   | { kind: 'context-partly-not-found'; message: string; selectors: string[] }
-  | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } };
+  | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } }
+  | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } };
 
 /** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
 export function getScanGaps(result: ScanResultLike): ScanGap[];
