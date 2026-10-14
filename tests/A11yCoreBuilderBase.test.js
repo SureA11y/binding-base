@@ -304,6 +304,26 @@ test('A11yCoreBuilderBase: withTags()/disableTags()/withRules()/disableRules() r
   }
 });
 
+test('A11yCoreBuilderBase: wcagLevel() sets engineOptions.wcagLevel in capitals, over options(), replaced by a later call and cleared by null', () => {
+  const b = new A11yCoreBuilderBase().options({ wcagLevel: 'AAA', locale: 'fr' }).wcagLevel('a').wcagLevel('aa');
+  assert.deepStrictEqual(b._buildEngineArgs().engineOptions, { wcagLevel: 'AA', locale: 'fr' });
+  assert.strictEqual(b._buildEngineArgs().runOnly, null, 'it selects no rule');
+  assert.deepStrictEqual(b.wcagLevel(null)._buildEngineArgs().engineOptions, { wcagLevel: 'AAA', locale: 'fr' }, 'options() applies again');
+  assert.ok(!('wcagLevel' in new A11yCoreBuilderBase()._buildEngineArgs().engineOptions), 'absent unless set');
+});
+
+test('A11yCoreBuilderBase: wcagLevel() throws INVALID_ENGINE_OPTIONS for anything but A, AA or AAA', () => {
+  for (const bad of ['AA+', 'AAAA', '', undefined, 2, true]) {
+    const b = new A11yCoreBuilderBase();
+    assert.throws(
+      () => b.wcagLevel(bad),
+      (err) => err instanceof TypeError && err.code === 'INVALID_ENGINE_OPTIONS' && err.message.startsWith('A11yCoreBuilder.wcagLevel(): '),
+      `wcagLevel(${JSON.stringify(bad)})`
+    );
+    assert.strictEqual(b._wcagLevel, null, 'nothing recorded from a rejected call');
+  }
+});
+
 // --- scan-gap warnings ---------------------------------------------------------------
 
 const GAPPY = {

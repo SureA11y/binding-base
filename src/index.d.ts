@@ -50,6 +50,8 @@ export class A11yCoreBuilderBase {
   withBestPractices(enabled?: boolean): this;
   /** How withTags() and withRules() combine when both are given: 'and' (the engine's default) or 'or'. */
   includeMode(mode: IncludeMode): this;
+  /** The WCAG level of the criteria the scan reports, without changing which rules run; null clears it (needs the @surea11y/core release after 1.11.1). */
+  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
   /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result. `null` goes back to console.warn. */
   logger(fn: ((gap: ScanGap, result: ScanResultLike) => void) | null): this;
   options(partialEngineOptions: Record<string, unknown>): this;

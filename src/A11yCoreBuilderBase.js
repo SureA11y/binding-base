@@ -62,8 +62,9 @@ function selectionValues(method, kind, value) {
  * `disableTags()`/`options()`/`withCustomRules()`/`withPacks()` accumulate
  * across calls, with no reset between `analyze()` calls -- create one
  * builder per scan. `reportOnly()`/`frames()`/`elementRef()`/`withWcag()`/
- * `withBestPractices()`/`includeMode()`/`logger()` are the exception: each
- * call replaces the previous value rather than merging with it.
+ * `withBestPractices()`/`includeMode()`/`wcagLevel()`/`logger()` are the
+ * exception: each call replaces the previous value rather than merging with
+ * it.
  */
 class A11yCoreBuilderBase {
   /**
@@ -84,6 +85,7 @@ class A11yCoreBuilderBase {
     this._wcag = null;
     this._bestPractices = false;
     this._includeMode = null;
+    this._wcagLevel = null;
     this._logger = null;
     this._engineOptions = {};
     this._reportOutcomes = null;
@@ -187,6 +189,32 @@ class A11yCoreBuilderBase {
       throw err;
     }
     this._includeMode = mode;
+    return this;
+  }
+
+  /**
+   * The WCAG level of the criteria the scan reports (surea11y's
+   * engineOptions.wcagLevel): criteria above it are left out of
+   * rulesResults, while every selected rule still runs and reports in
+   * checksResults. It gives the level of a scan that names checks rather
+   * than criteria: `.withRules('contrast-computable')` reports 1.4.3 and,
+   * at AAA, 1.4.6; with `.wcagLevel('AA')`, 1.4.3 alone. Any case is
+   * accepted and sent in capitals; it wins over a wcagLevel given through
+   * options(). Calling it again replaces the level, and null clears it.
+   * Needs the @surea11y/core release after 1.11.1.
+   */
+  wcagLevel(level) {
+    if (level === null) {
+      this._wcagLevel = null;
+      return this;
+    }
+    const upper = typeof level === 'string' ? level.toUpperCase() : level;
+    if (!WCAG_LEVELS.includes(upper)) {
+      const err = new TypeError(`A11yCoreBuilder.wcagLevel(): expected a level (${WCAG_LEVELS.join(', ')}), or null, not ${level === undefined ? 'undefined' : JSON.stringify(level)}.`);
+      err.code = 'INVALID_ENGINE_OPTIONS';
+      throw err;
+    }
+    this._wcagLevel = upper;
     return this;
   }
 
@@ -426,6 +454,7 @@ class A11yCoreBuilderBase {
       : null;
 
     const engineOptions = { ...this._engineOptions };
+    if (this._wcagLevel) engineOptions.wcagLevel = this._wcagLevel;
     if (this._customRules.length) {
       // Concatenated with, not replaced by, any customRules already present
       // via a raw .options({ customRules }) call, so the two ways of
