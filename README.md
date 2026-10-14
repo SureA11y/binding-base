@@ -221,6 +221,10 @@ What a binding's docs should say about it, in its own words:
 
 A binding needs no other code for the advice, as long as its `analyze()` calls the shared `_warnScanGaps(result, source)` rather than a `_warnScanGaps()` of its own: it prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook, and hands it to `logger()` when one is set.
 
+## Proposals
+
+- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — not built yet: a `.screenshots()` option for pictures of the elements a scan flags, with what goes in this package and what each binding adds.
+
 ## Testing
 
 No browser needed:
