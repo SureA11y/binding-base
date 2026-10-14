@@ -274,6 +274,24 @@ test('core contract: includeMode() decides whether withTags() and withRules() in
   }
 });
 
+test('core contract: wcagLevel() gives the level of the criteria a scan that names checks reports', () => {
+  const page = pageScan();
+  try {
+    // contrast-computable checks 1.4.3 (AA) and 1.4.6 (AAA). Named alone, the
+    // scan reports both; at AA, 1.4.3 alone, and the check still runs.
+    const rollups = (result) => result.rulesResults.map((r) => r.ruleId);
+    const every = page.scan(new A11yCoreBuilderBase().withRules('contrast-computable'));
+    assert.deepStrictEqual(rollups(every), ['wcag-1.4.3-contrast-minimum', 'wcag-1.4.6-contrast-enhanced']);
+
+    const aa = page.scan(new A11yCoreBuilderBase().withRules('contrast-computable').wcagLevel('aa'));
+    assert.strictEqual(aa.engine.wcagLevel, 'AA');
+    assert.deepStrictEqual(rollups(aa), ['wcag-1.4.3-contrast-minimum']);
+    assert.deepStrictEqual(aa.checksResults.map((r) => r.ruleId), ['contrast-computable']);
+  } finally {
+    page.close();
+  }
+});
+
 test('core contract: strictOptions rejects a misspelt option with INVALID_ENGINE_OPTIONS', () => {
   const page = pageScan();
   try {
