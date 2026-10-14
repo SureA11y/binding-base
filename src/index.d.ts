@@ -50,6 +50,8 @@ export class A11yCoreBuilderBase {
   withBestPractices(enabled?: boolean): this;
   /** How withTags() and withRules() combine when both are given: 'and' (the engine's default) or 'or'. */
   includeMode(mode: IncludeMode): this;
+  /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result. `null` goes back to console.warn. */
+  logger(fn: ((gap: ScanGap, result: ScanResultLike) => void) | null): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
   /** Packs from @surea11y/core/pack; the scan names them, and analyze() injects _packScript(). */
@@ -62,6 +64,8 @@ export class A11yCoreBuilderBase {
   _buildEngineArgs(): EngineArgs;
   /** The script that registers this scan's packs in a page, or null without packs. */
   _packScript(): string | null;
+  /** Sends each of a frame's scan gaps to the logger(), or prints it with console.warn as `<source> (<url>): <message>`. */
+  _warnScanGaps(result: unknown, source: string): void;
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
 }
 
@@ -106,6 +110,8 @@ export function rethrowEngineError<T>(value: T): T;
 /** The parts of a scan result formatFailures() and getScanGaps() read (core's ScanResult has more). */
 export interface ScanResultLike {
   checksResults: ReadonlyArray<object>;
+  /** The URL the scan reports for the page or frame. */
+  url?: string | null;
   /** How the contextSelector resolved; null without one (@surea11y/core 1.10.0 and later). */
   contextMatch?: { elementCount: number; unmatchedSelectors: string[] } | null;
   /** Custom rules that did not run, and why (@surea11y/core 1.10.0 and later). */

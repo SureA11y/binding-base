@@ -1,6 +1,7 @@
 'use strict';
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
+const { getScanGaps } = require('./scanGaps');
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -61,8 +62,8 @@ function selectionValues(method, kind, value) {
  * `disableTags()`/`options()`/`withCustomRules()`/`withPacks()` accumulate
  * across calls, with no reset between `analyze()` calls -- create one
  * builder per scan. `reportOnly()`/`frames()`/`elementRef()`/`withWcag()`/
- * `withBestPractices()`/`includeMode()` are the exception: each call
- * replaces the previous value rather than merging with it.
+ * `withBestPractices()`/`includeMode()`/`logger()` are the exception: each
+ * call replaces the previous value rather than merging with it.
  */
 class A11yCoreBuilderBase {
   /**
@@ -83,6 +84,7 @@ class A11yCoreBuilderBase {
     this._wcag = null;
     this._bestPractices = false;
     this._includeMode = null;
+    this._logger = null;
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
@@ -363,6 +365,50 @@ class A11yCoreBuilderBase {
   frames(enabled = true) {
     this._scanFrames = !!enabled;
     return this;
+  }
+
+  /**
+   * Where analyze() sends the scan gaps it reports (see `_warnScanGaps()`):
+   * `fn(gap, result)` is called once per gap, with the gap as getScanGaps()
+   * gives it and the result of the frame it came from, instead of printing
+   * it with console.warn. `() => {}` silences them; `null` goes back to
+   * console.warn. Calling it again replaces the logger.
+   * @param {((gap: object, result: object) => void)|null} fn
+   */
+  logger(fn) {
+    if (fn !== null && typeof fn !== 'function') {
+      throw new TypeError(`A11yCoreBuilder.logger(): expected a function, or null for console.warn, not ${fn === undefined ? 'undefined' : JSON.stringify(fn) || String(fn)}.`);
+    }
+    this._logger = fn;
+    return this;
+  }
+
+  /**
+   * Says what one scanned frame's result left out (getScanGaps()), so a scan
+   * that skipped something doesn't pass unnoticed as clean where nothing
+   * asserts on it. A subclass's analyze() calls it once per scanned frame.
+   * Each gap goes to the logger() function when one is set; otherwise it is
+   * printed with console.warn as `<source> (<frame url>): <message>`.
+   * Anything that isn't a scan result is passed over: the caller sees it as
+   * it is.
+   * @param {object} result one frame's scan result
+   * @param {string} source what the line names as its sender, the binding's package name
+   */
+  _warnScanGaps(result, source) {
+    let gaps;
+    try {
+      gaps = getScanGaps(result);
+    } catch (e) {
+      return;
+    }
+    for (const gap of gaps) {
+      if (this._logger) {
+        this._logger(gap, result);
+      } else {
+        const where = result.url ? ` (${result.url})` : '';
+        console.warn(`${source}${where}: ${gap.message}`);
+      }
+    }
   }
 
   /**

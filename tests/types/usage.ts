@@ -33,6 +33,13 @@ scan(null, contextSelector, engineOptions, runOnly);
 const filtered: ScanResult = builder._applyReportOnly(scanned);
 const message: string = formatFailures(filtered) + formatFailures(filtered.checksResults, { outcomes: ['fail'] });
 
+builder.logger((gap, frameResult) => {
+  const line: string = `${frameResult.url ?? ''}: ${gap.message}`;
+  if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
+  return void line;
+}).logger(() => {}).logger(null);
+builder._warnScanGaps(result, '@surea11y/example');
+
 for (const gap of getScanGaps(result)) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
   else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
