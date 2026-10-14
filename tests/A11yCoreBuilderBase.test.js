@@ -304,6 +304,66 @@ test('A11yCoreBuilderBase: withTags()/disableTags()/withRules()/disableRules() r
   }
 });
 
+// --- scan-gap warnings ---------------------------------------------------------------
+
+const GAPPY = {
+  url: 'https://example.com/',
+  contextMatch: { elementCount: 0, unmatchedSelectors: ['#missing'] },
+  skippedCustomRules: [{ id: 'my-rule', reason: 'runInPage threw' }],
+  checksResults: []
+};
+
+function capturingWarn(fn) {
+  const warn = console.warn;
+  const lines = [];
+  console.warn = (...args) => lines.push(args.join(' '));
+  try { fn(); } finally { console.warn = warn; }
+  return lines;
+}
+
+test('A11yCoreBuilderBase: _warnScanGaps() prints each gap with console.warn, named by the source and the frame URL, by default', () => {
+  const lines = capturingWarn(() => new A11yCoreBuilderBase()._warnScanGaps(GAPPY, '@surea11y/puppeteer'));
+  assert.deepStrictEqual(lines, [
+    '@surea11y/puppeteer (https://example.com/): Nothing was scanned: the scan scope matched no element ("#missing").',
+    '@surea11y/puppeteer (https://example.com/): Custom rule "my-rule" did not run: runInPage threw.'
+  ]);
+  const noUrl = capturingWarn(() => new A11yCoreBuilderBase()._warnScanGaps({ ...GAPPY, url: null, skippedCustomRules: [] }, '@surea11y/selenium'));
+  assert.deepStrictEqual(noUrl, ['@surea11y/selenium: Nothing was scanned: the scan scope matched no element ("#missing").']);
+});
+
+test('A11yCoreBuilderBase: _warnScanGaps() says nothing for a clean result or for what is not a scan result', () => {
+  const b = new A11yCoreBuilderBase();
+  const lines = capturingWarn(() => {
+    b._warnScanGaps({ url: 'https://example.com/', checksResults: [] }, 'x');
+    b._warnScanGaps(null, 'x');
+    b._warnScanGaps({ url: 'https://example.com/', error: 'frame detached' }, 'x');
+  });
+  assert.deepStrictEqual(lines, []);
+});
+
+test('A11yCoreBuilderBase: logger() receives each gap and its frame\'s result instead of console.warn', () => {
+  const seen = [];
+  const b = new A11yCoreBuilderBase().logger((gap, result) => seen.push([gap.kind, result]));
+  const lines = capturingWarn(() => b._warnScanGaps(GAPPY, '@surea11y/puppeteer'));
+  assert.deepStrictEqual(lines, []);
+  assert.deepStrictEqual(seen, [['context-not-found', GAPPY], ['custom-rule-skipped', GAPPY]]);
+});
+
+test('A11yCoreBuilderBase: logger(() => {}) silences the warnings, a later call replaces the logger, and logger(null) brings console.warn back', () => {
+  const b = new A11yCoreBuilderBase().logger(() => { throw new Error('replaced'); }).logger(() => {});
+  assert.deepStrictEqual(capturingWarn(() => b._warnScanGaps(GAPPY, 'x')), []);
+  b.logger(null);
+  assert.strictEqual(capturingWarn(() => b._warnScanGaps(GAPPY, 'x')).length, 2);
+});
+
+test('A11yCoreBuilderBase: logger() throws a TypeError for anything but a function or null', () => {
+  for (const bad of [undefined, 'console', 42, {}, true]) {
+    const b = new A11yCoreBuilderBase();
+    assert.throws(() => b.logger(bad), (err) => err instanceof TypeError && err.message.startsWith('A11yCoreBuilder.logger(): '), `logger(${String(bad)})`);
+    assert.strictEqual(b._logger, null, 'nothing recorded from a rejected call');
+  }
+});
+
 // --- packs ---------------------------------------------------------------------------
 
 const PACK = {
@@ -357,6 +417,34 @@ test('A11yCoreBuilderBase: withWcag() throws INVALID_RUN_ONLY for a version or l
 test('A11yCoreBuilderBase: withBestPractices() sets runOnly.bestPractices, and withBestPractices(false) clears it', () => {
   assert.strictEqual(new A11yCoreBuilderBase().withBestPractices()._buildEngineArgs().runOnly.bestPractices, true);
   assert.strictEqual(new A11yCoreBuilderBase().withBestPractices().withBestPractices(false)._buildEngineArgs().runOnly, null);
+});
+
+test('A11yCoreBuilderBase: includeMode() sets runOnly.includeMode beside tags and rules, replaced by a later call', () => {
+  const b = new A11yCoreBuilderBase().withTags('wcag2a').withRules('region').includeMode('and').includeMode('or');
+  assert.deepStrictEqual(b._buildEngineArgs().runOnly, {
+    includeRuleIds: ['region'],
+    excludeRuleIds: undefined,
+    tags: ['wcag2a'],
+    excludeTags: undefined,
+    includeMode: 'or'
+  });
+  assert.ok(!('includeMode' in new A11yCoreBuilderBase().withTags('wcag2a')._buildEngineArgs().runOnly), 'absent unless set');
+});
+
+test('A11yCoreBuilderBase: includeMode() on its own selects nothing, so there is no runOnly', () => {
+  assert.strictEqual(new A11yCoreBuilderBase().includeMode('or')._buildEngineArgs().runOnly, null);
+});
+
+test('A11yCoreBuilderBase: includeMode() throws INVALID_RUN_ONLY for anything but \'and\' or \'or\'', () => {
+  for (const bad of ['xor', 'OR', '', undefined, null, true]) {
+    const builder = new A11yCoreBuilderBase().withTags('wcag2a');
+    assert.throws(
+      () => builder.includeMode(bad),
+      (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY' && err.message.startsWith('A11yCoreBuilder.includeMode(): '),
+      `includeMode(${JSON.stringify(bad)})`
+    );
+    assert.ok(!('includeMode' in builder._buildEngineArgs().runOnly), 'nothing recorded from a rejected call');
+  }
 });
 
 test('A11yCoreBuilderBase: withPacks() refuses what is not a pack, and _packScript() a pack surea11y cannot run', () => {

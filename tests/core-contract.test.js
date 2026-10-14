@@ -255,6 +255,25 @@ test('core contract: withWcag() and withBestPractices() select what the engine r
   }
 });
 
+test('core contract: includeMode() decides whether withTags() and withRules() intersect or add up', () => {
+  const page = pageScan();
+  try {
+    const both = () => new A11yCoreBuilderBase().withTags('wcag2a').withRules('region');
+    // region is a best practice with no wcag2a tag: under 'and' nothing matches both.
+    const and = quietly(() => page.scan(both()));
+    assert.strictEqual(and.checksResults.length, 0);
+
+    const or = page.scan(both().includeMode('or'));
+    const ids = or.checksResults.map((r) => r.ruleId);
+    assert.ok(ids.includes('region'));
+    assert.ok(ids.includes('img-alt-present'));
+    const tagged = page.scan(new A11yCoreBuilderBase().withTags('wcag2a'));
+    assert.strictEqual(ids.length, tagged.checksResults.length + 1, 'the wcag2a rules, plus region');
+  } finally {
+    page.close();
+  }
+});
+
 test('core contract: strictOptions rejects a misspelt option with INVALID_ENGINE_OPTIONS', () => {
   const page = pageScan();
   try {

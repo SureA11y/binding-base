@@ -1,6 +1,7 @@
 'use strict';
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
+const { getScanGaps } = require('./scanGaps');
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -20,6 +21,9 @@ function loadCorePack() {
 // What surea11y's runOnly.wcag accepts.
 const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
 const WCAG_LEVELS = ['A', 'AA', 'AAA'];
+
+// What surea11y's runOnly.includeMode accepts.
+const INCLUDE_MODES = ['and', 'or'];
 
 // withTags()/disableTags()/withRules()/disableRules() take a string or an
 // array of strings. Anything else (undefined from a missing config value,
@@ -58,8 +62,8 @@ function selectionValues(method, kind, value) {
  * `disableTags()`/`options()`/`withCustomRules()`/`withPacks()` accumulate
  * across calls, with no reset between `analyze()` calls -- create one
  * builder per scan. `reportOnly()`/`frames()`/`elementRef()`/`withWcag()`/
- * `withBestPractices()` are the exception: each call replaces the previous
- * value rather than merging with it.
+ * `withBestPractices()`/`includeMode()`/`logger()` are the exception: each
+ * call replaces the previous value rather than merging with it.
  */
 class A11yCoreBuilderBase {
   /**
@@ -79,6 +83,8 @@ class A11yCoreBuilderBase {
     this._excludeTags = [];
     this._wcag = null;
     this._bestPractices = false;
+    this._includeMode = null;
+    this._logger = null;
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
@@ -163,6 +169,24 @@ class A11yCoreBuilderBase {
    */
   withBestPractices(enabled = true) {
     this._bestPractices = enabled !== false;
+    return this;
+  }
+
+  /**
+   * How withTags() and withRules() combine when both are given (surea11y's
+   * runOnly.includeMode): `'and'`, the engine's default, runs only the rules
+   * matching both; `'or'` runs those matching either, so
+   * `.withTags('wcag2a').withRules('region').includeMode('or')` runs the
+   * wcag2a rules plus region. Sent only when set; on its own, with nothing
+   * else selected, it changes nothing. Calling it again replaces the mode.
+   */
+  includeMode(mode) {
+    if (!INCLUDE_MODES.includes(mode)) {
+      const err = new TypeError(`A11yCoreBuilder.includeMode(): expected ${INCLUDE_MODES.map((m) => `'${m}'`).join(' or ')}, not ${JSON.stringify(mode)}.`);
+      err.code = 'INVALID_RUN_ONLY';
+      throw err;
+    }
+    this._includeMode = mode;
     return this;
   }
 
@@ -344,6 +368,50 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * Where analyze() sends the scan gaps it reports (see `_warnScanGaps()`):
+   * `fn(gap, result)` is called once per gap, with the gap as getScanGaps()
+   * gives it and the result of the frame it came from, instead of printing
+   * it with console.warn. `() => {}` silences them; `null` goes back to
+   * console.warn. Calling it again replaces the logger.
+   * @param {((gap: object, result: object) => void)|null} fn
+   */
+  logger(fn) {
+    if (fn !== null && typeof fn !== 'function') {
+      throw new TypeError(`A11yCoreBuilder.logger(): expected a function, or null for console.warn, not ${fn === undefined ? 'undefined' : JSON.stringify(fn) || String(fn)}.`);
+    }
+    this._logger = fn;
+    return this;
+  }
+
+  /**
+   * Says what one scanned frame's result left out (getScanGaps()), so a scan
+   * that skipped something doesn't pass unnoticed as clean where nothing
+   * asserts on it. A subclass's analyze() calls it once per scanned frame.
+   * Each gap goes to the logger() function when one is set; otherwise it is
+   * printed with console.warn as `<source> (<frame url>): <message>`.
+   * Anything that isn't a scan result is passed over: the caller sees it as
+   * it is.
+   * @param {object} result one frame's scan result
+   * @param {string} source what the line names as its sender, the binding's package name
+   */
+  _warnScanGaps(result, source) {
+    let gaps;
+    try {
+      gaps = getScanGaps(result);
+    } catch (e) {
+      return;
+    }
+    for (const gap of gaps) {
+      if (this._logger) {
+        this._logger(gap, result);
+      } else {
+        const where = result.url ? ` (${result.url})` : '';
+        console.warn(`${source}${where}: ${gap.message}`);
+      }
+    }
+  }
+
+  /**
    * Builds the three arguments every binding passes into surea11y's
    * `runa11yCoreInPage(pageUrl, contextSelector, engineOptions, runOnly)` --
    * everything derivable from this builder's own accumulated state, with no
@@ -393,6 +461,8 @@ class A11yCoreBuilderBase {
       engineOptions.rules = rules;
     }
 
+    // includeMode alone selects nothing, so it doesn't make a runOnly: the
+    // engine wouldn't let it take precedence over engineOptions either.
     const hasRunOnly = this._includeRuleIds.length || this._excludeRuleIds.length || this._tags.length || this._excludeTags.length || this._wcag || this._bestPractices;
     const runOnly = hasRunOnly
       ? {
@@ -401,7 +471,8 @@ class A11yCoreBuilderBase {
         tags: this._tags.length ? this._tags : undefined,
         excludeTags: this._excludeTags.length ? this._excludeTags : undefined,
         ...(this._wcag ? { wcag: { ...this._wcag } } : {}),
-        ...(this._bestPractices ? { bestPractices: true } : {})
+        ...(this._bestPractices ? { bestPractices: true } : {}),
+        ...(this._includeMode ? { includeMode: this._includeMode } : {})
       }
       : null;
 
