@@ -28,6 +28,7 @@ export interface EngineArgs {
 
 export type WcagVersion = '2.0' | '2.1' | '2.2';
 export type WcagLevel = 'A' | 'AA' | 'AAA';
+export type IncludeMode = 'and' | 'or';
 
 /** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
 export interface PackLike {
@@ -47,6 +48,8 @@ export class A11yCoreBuilderBase {
   withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
   /** Also run the best-practice rules, those that name no WCAG criterion (@surea11y/core 1.11 and later). */
   withBestPractices(enabled?: boolean): this;
+  /** How withTags() and withRules() combine when both are given: 'and' (the engine's default) or 'or'. */
+  includeMode(mode: IncludeMode): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
   /** Packs from @surea11y/core/pack; the scan names them, and analyze() injects _packScript(). */

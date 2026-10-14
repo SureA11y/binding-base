@@ -359,6 +359,34 @@ test('A11yCoreBuilderBase: withBestPractices() sets runOnly.bestPractices, and w
   assert.strictEqual(new A11yCoreBuilderBase().withBestPractices().withBestPractices(false)._buildEngineArgs().runOnly, null);
 });
 
+test('A11yCoreBuilderBase: includeMode() sets runOnly.includeMode beside tags and rules, replaced by a later call', () => {
+  const b = new A11yCoreBuilderBase().withTags('wcag2a').withRules('region').includeMode('and').includeMode('or');
+  assert.deepStrictEqual(b._buildEngineArgs().runOnly, {
+    includeRuleIds: ['region'],
+    excludeRuleIds: undefined,
+    tags: ['wcag2a'],
+    excludeTags: undefined,
+    includeMode: 'or'
+  });
+  assert.ok(!('includeMode' in new A11yCoreBuilderBase().withTags('wcag2a')._buildEngineArgs().runOnly), 'absent unless set');
+});
+
+test('A11yCoreBuilderBase: includeMode() on its own selects nothing, so there is no runOnly', () => {
+  assert.strictEqual(new A11yCoreBuilderBase().includeMode('or')._buildEngineArgs().runOnly, null);
+});
+
+test('A11yCoreBuilderBase: includeMode() throws INVALID_RUN_ONLY for anything but \'and\' or \'or\'', () => {
+  for (const bad of ['xor', 'OR', '', undefined, null, true]) {
+    const builder = new A11yCoreBuilderBase().withTags('wcag2a');
+    assert.throws(
+      () => builder.includeMode(bad),
+      (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY' && err.message.startsWith('A11yCoreBuilder.includeMode(): '),
+      `includeMode(${JSON.stringify(bad)})`
+    );
+    assert.ok(!('includeMode' in builder._buildEngineArgs().runOnly), 'nothing recorded from a rejected call');
+  }
+});
+
 test('A11yCoreBuilderBase: withPacks() refuses what is not a pack, and _packScript() a pack surea11y cannot run', () => {
   assert.throws(() => new A11yCoreBuilderBase().withPacks('@acme/a11y-rules'), /each pack must be a pack object/);
   const old = new A11yCoreBuilderBase().withPacks({ ...PACK, core: '^99.0.0' });
