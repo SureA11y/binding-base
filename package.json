@@ -1,11 +1,8 @@
 {
   "name": "@surea11y/binding-base",
   "version": "1.3.1",
-  "description": "Shared, driver-agnostic scaffolding for surea11y's framework bindings (Playwright, Puppeteer, Selenium, WebdriverIO, Cypress) -- not useful on its own.",
+  "description": "Internal helpers shared by surea11y's bindings and test matcher -- not useful on its own. To check accessibility, install @surea11y/playwright, /cypress, /test-matchers or another binding instead.",
   "keywords": [
-    "accessibility",
-    "a11y",
-    "wcag",
     "surea11y",
     "binding",
     "internal"
