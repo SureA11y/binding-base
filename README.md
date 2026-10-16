@@ -4,7 +4,7 @@ Shared, driver-agnostic scaffolding for [`@surea11y/core`](https://github.com/Su
 
 > **Looking to check accessibility?** Install the package for your tool instead: [`@surea11y/playwright`](https://github.com/SureA11y/playwright), [`@surea11y/puppeteer`](https://github.com/SureA11y/puppeteer), [`@surea11y/selenium`](https://github.com/SureA11y/selenium), [`@surea11y/webdriverio`](https://github.com/SureA11y/webdriverio) or [`@surea11y/cypress`](https://github.com/SureA11y/cypress) for browser tests, [`@surea11y/test-matchers`](https://github.com/SureA11y/test-matchers) for Jest or Vitest component tests, or [`@surea11y/cli`](https://github.com/SureA11y/cli) for the terminal or CI. None of them needs this package installed separately.
 
-**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; and, since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices.
+**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, and notes on forced colors and the internals hook.
 
 Extracted once five real consumers existed and the duplication was actually costing something — each binding carried the same logic in parallel, and keeping it in sync by hand across five packages was no longer worth the cost once there were that many consumers to justify a shared package.
 
@@ -52,7 +52,20 @@ Extracted once five real consumers existed and the duplication was actually cost
   ```
 
   A custom rule the selection leaves out on its own, such as one tagged `best-practice` under a `withWcag()` target, is still a gap: the caller asked for it and it didn't run.
-- **`logger(fn)` / `_warnScanGaps(result, source)`** — where a binding's `analyze()` sends the scan gaps it reports. By default each gap is printed with `console.warn`, once per scanned frame, as `@surea11y/puppeteer (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").`, so a mistyped scope shows in a test run's log even where nothing asserts on it. That stays the default. A project that already handles gaps itself can take them over with `logger(fn)`: `fn(gap, result)` is called once per gap, with the gap as `getScanGaps()` gives it and the result of the frame it came from, and `console.warn` isn't called. `() => {}` silences them, and `null` brings `console.warn` back. Anything other than a function or `null` throws a `TypeError`. Each call replaces the previous logger.
+- **`getScanNotes(result)`** — what a reader should know about *how* the page was scanned (core 1.12.0 and later). Unlike a gap, a note doesn't mean anything was left out, so `@surea11y/test-matchers` doesn't fail on one. Two kinds, each with a `message`:
+  - `'forced-colors'`: the page was shown in forced colors (Windows high contrast, or emulated `forced-colors: active`), so contrast findings may differ with forced colors off. Often an accident of the CI machine.
+  - `'internals-hook'`: the scan asked about custom elements because it couldn't read the name or states they set through a private `ElementInternals`, and the [internals hook](#the-internals-hook) wasn't installed (`hook: 'none'`), or was installed after the page's scripts ran (`'late'`). `elementCount` says how many elements.
+
+  ```js
+  for (const note of getScanNotes(results)) {
+    if (note.kind === 'internals-hook') {
+      console.log(`${note.elementCount} components could not be checked; install the hook before page.goto()`);
+    }
+  }
+  ```
+
+  `formatFailures()` prints every note, and a binding's `analyze()` prints the `internals-hook` note once per scan (see `logger()` below).
+- **`logger(fn)` / `_warnScanGaps(result, source)`** — where a binding's `analyze()` sends the scan gaps it reports. By default each gap is printed with `console.warn`, once per scanned frame, as `@surea11y/puppeteer (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").`, so a mistyped scope shows in a test run's log even where nothing asserts on it. That stays the default. A project that already handles gaps itself can take them over with `logger(fn)`: `fn(gap, result)` is called once per gap, with the gap as `getScanGaps()` gives it and the result of the frame it came from, and `console.warn` isn't called. The `internals-hook` note of `getScanNotes()` goes the same way, once per builder rather than once per frame; check `kind` to tell a note from a gap. `() => {}` silences them, and `null` brings `console.warn` back. Anything other than a function or `null` throws a `TypeError`. Each call replaces the previous logger.
 
   That fits a scanning service, which shows gaps to its users and wants them once in its own structured log rather than again as a loose line on the server's console for every scan:
 
@@ -83,7 +96,7 @@ builder.withPacks(policy).options({ profile: 'acme-policy' });
 
 ### `formatFailures(resultOrChecks, { outcomes? })`
 
-Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as it always has. Given the whole result, it also adds the result's scan gaps and the core release that produced it (`engine.version`), and a scan that left something out does not read as clean: with no findings, it opens with "No accessibility violations found in what was scanned." rather than "No accessibility violations found.", or, when the scope matched nothing, with the gap itself:
+Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as it always has. Given the whole result, it also adds the result's scan gaps, its notes (`getScanNotes()`) and the core release that produced it (`engine.version`), and a scan that left something out does not read as clean: with no findings, it opens with "No accessibility violations found in what was scanned." rather than "No accessibility violations found.", or, when the scope matched nothing, with the gap itself:
 
 ```
 1) img-alt-present (serious): Image has no text alternative.
@@ -92,9 +105,12 @@ Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, as i
 
 Part of the scan scope was not scanned: no element matched "#sidebar".
 Custom rule "my-rule" did not run: runInPage source could not be turned back into a function.
-Pack "@acme/a11y-policy" did not run: it supports core ^2.0.0, and this is core 1.11.1.
+Pack "@acme/a11y-policy" did not run: it supports core ^2.0.0, and this is core 1.12.0.
 
-Scanned with @surea11y/core 1.11.1.
+The page was shown in forced colors (high contrast); contrast findings may differ with forced colors off.
+2 custom elements were asked about because the scan could not read the name or states they set through ElementInternals. Install the internals hook before the page loads (installInternalsHook() in your binding) to have them checked, and roles set the same way.
+
+Scanned with @surea11y/core 1.12.0.
 ```
 
 It throws a `TypeError` for anything else, such as the `{ topFrame, frames }` tree of a `frames(true)` scan: format `topFrame` and each frame on its own.
@@ -129,7 +145,7 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 ```json
 {
   "dependencies": {
-    "@surea11y/binding-base": "^1.3.0"
+    "@surea11y/binding-base": "^1.4.0"
   }
 }
 ```
@@ -151,12 +167,48 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
     // ...driver-specific injection of inPageScan, using contextSelector/engineOptions/runOnly, e.g.
     const result = rethrowEngineError(await this._page.evaluate(inPageScan, this._url, contextSelector, engineOptions, runOnly));
+    this._warnScanGaps(result, '@surea11y/<binding>'); // once per scanned frame
     return this._applyReportOnly(result);
   }
 }
 ```
 
 This package's own `.d.ts` is not referenced by any binding's consumer-facing `.d.ts` — each binding's `A11yCoreBuilder.d.ts` declares a flat, non-inheriting ambient `export class A11yCoreBuilder { ... }`, so the inheritance here is invisible to TypeScript consumers.
+
+### The internals hook
+
+Many web components keep their `ElementInternals` in a private field (`this.#internals = this.attachInternals()`). No script can read a name, a state or a role set there, so core asks about the element (`name_internals`, `state_internals`) instead of judging it. A role set there isn't even asked about: the element simply has no role for the scan, so a component that is a switch only through its internals isn't checked at all. `internalsHookScript()` from `@surea11y/core` (1.12.0 and later) returns a script that, run before the page's own scripts, records every element's internals for the scan to read. See core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#reading-private-elementinternals-the-internals-hook).
+
+Only the driver can run code before a page loads, and every builder works on a page that is already loaded, so this isn't a builder method. Each binding offers it the same way: a static **`A11yCoreBuilder.installInternalsHook(target)`**, called before navigating, opt-in, doing nothing else. It returns what the driver's call returns (a Promise in most bindings).
+
+```js
+// Playwright: every frame, and again after each navigation
+static installInternalsHook(page) {
+  return page.addInitScript({ content: internalsHookScript() });
+}
+// Puppeteer:        page.evaluateOnNewDocument(internalsHookScript())
+// Selenium (CDP):   cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: internalsHookScript() })
+// WebdriverIO:      WebDriver BiDi script.addPreloadScript, with the script wrapped in a function
+// Cypress:          cy.on('window:before:load', (win) => win.eval(internalsHookScript()))
+```
+
+A user then writes:
+
+```js
+await A11yCoreBuilder.installInternalsHook(page); // before goto
+await page.goto('https://example.com/');
+const results = await new A11yCoreBuilder({ page }).analyze();
+results.engine.environment.internalsHook; // 'early'
+```
+
+What a binding's docs should say about it, in its own words:
+
+- **What it changes.** The engine reads the names, states *and roles* components set through private internals. Their questions become passes or fails, and a component that has a role only through its internals is checked for that role (an unnamed `switch` fails `binary-control-name-present`). Without the hook such components aren't checked for their role, and nothing in the result says so. The result records the hook in `engine.environment.internalsHook`: `'early'`, `'late'` or absent.
+- **When to install it.** Before the page loads. Installed after the page's scripts ran, it is `'late'` and reads only internals attached after it; a page that is already loaded can't be fixed.
+- **What it can't cover.** Frames the driver's before-load API doesn't reach (Cypress's `window:before:load` reaches the app's frame only), and drivers with no before-load script at all.
+- **What a page can notice.** `HTMLElement.prototype.attachInternals` is no longer native code, an extra stack frame appears in errors thrown through it, and a global symbol (`Symbol.for('surea11y.internals')`) holds the record. Any script on the page can read every component's internals through it, so it is for test and audit runs, not production.
+
+Each binding needs no other code for the advice: `_warnScanGaps()` prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook.
 
 ## Testing
 

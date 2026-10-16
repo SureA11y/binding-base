@@ -8,6 +8,7 @@ import {
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
+  getScanNotes,
   queryOccurrenceElement,
   rethrowEngineError
 } from '../../src/index';
@@ -39,6 +40,7 @@ const message: string = formatFailures(filtered) + formatFailures(filtered.check
 builder.logger((gap, frameResult) => {
   const line: string = `${frameResult.url ?? ''}: ${gap.message}`;
   if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
+  if (gap.kind === 'internals-hook') gap.elementCount.toFixed();
   return void line;
 }).logger(() => {}).logger(null);
 builder._warnScanGaps(result, '@surea11y/example');
@@ -47,6 +49,11 @@ for (const gap of getScanGaps(result)) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
   else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
   else gap.selectors.join(', ');
+}
+
+for (const note of getScanNotes(result)) {
+  if (note.kind === 'internals-hook') note.hook.toUpperCase();
+  else note.message.toUpperCase();
 }
 
 const occurrence = result.checksResults[0].occurrences[0];

@@ -2,6 +2,7 @@
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
 const { getScanGaps } = require('./scanGaps');
+const { getScanNotes } = require('./scanNotes');
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -92,6 +93,7 @@ class A11yCoreBuilderBase {
     this._includeMode = null;
     this._wcagLevel = null;
     this._logger = null;
+    this._saidInternalsNote = false;
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
@@ -406,8 +408,10 @@ class A11yCoreBuilderBase {
    * Where analyze() sends the scan gaps it reports (see `_warnScanGaps()`):
    * `fn(gap, result)` is called once per gap, with the gap as getScanGaps()
    * gives it and the result of the frame it came from, instead of printing
-   * it with console.warn. `() => {}` silences them; `null` goes back to
-   * console.warn. Calling it again replaces the logger.
+   * it with console.warn; and once for the `internals-hook` note, as
+   * getScanNotes() gives it (tell them apart by `kind`). `() => {}`
+   * silences them; `null` goes back to console.warn. Calling it again
+   * replaces the logger.
    * @param {((gap: object, result: object) => void)|null} fn
    */
   logger(fn) {
@@ -423,7 +427,10 @@ class A11yCoreBuilderBase {
    * that skipped something doesn't pass unnoticed as clean where nothing
    * asserts on it. A subclass's analyze() calls it once per scanned frame.
    * Each gap goes to the logger() function when one is set; otherwise it is
-   * printed with console.warn as `<source> (<frame url>): <message>`.
+   * printed with console.warn as `<source> (<frame url>): <message>`. The
+   * `internals-hook` note of getScanNotes() goes the same way, once per
+   * builder: custom elements the internals hook would have let the engine
+   * read. Other notes are left to formatFailures().
    * Anything that isn't a scan result is passed over: the caller sees it as
    * it is.
    * @param {object} result one frame's scan result
@@ -436,12 +443,17 @@ class A11yCoreBuilderBase {
     } catch (e) {
       return;
     }
-    for (const gap of gaps) {
+    // The internals-hook note, said once per builder (one builder per scan,
+    // so once per scan, whichever frame asked first): it is advice about how
+    // the page was loaded, the same for every frame.
+    const notes = this._saidInternalsNote ? [] : getScanNotes(result).filter((n) => n.kind === 'internals-hook');
+    if (notes.length) this._saidInternalsNote = true;
+    for (const entry of gaps.concat(notes)) {
       if (this._logger) {
-        this._logger(gap, result);
+        this._logger(entry, result);
       } else {
         const where = result.url ? ` (${result.url})` : '';
-        console.warn(`${source}${where}: ${gap.message}`);
+        console.warn(`${source}${where}: ${entry.message}`);
       }
     }
   }
