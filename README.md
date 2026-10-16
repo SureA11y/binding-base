@@ -223,7 +223,7 @@ A binding needs no other code for the advice, as long as its `analyze()` calls t
 
 ## Proposals
 
-- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — not built yet: a `.screenshots()` option for pictures of the elements a scan flags, with what goes in this package and what each binding adds.
+- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — designed, planned for 1.5.0: a `.screenshots()` option for pictures of the elements a scan flags (off by default, one per element, a Buffer unless `dir` is given), with what goes in this package and what each binding adds.
 
 ## Testing
 
