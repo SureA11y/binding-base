@@ -32,6 +32,21 @@ export type WcagLevel = 'A' | 'AA' | 'AAA';
 export type WcagLevelInput = WcagLevel | Lowercase<WcagLevel> | 'Aa' | 'Aaa';
 export type IncludeMode = 'and' | 'or';
 
+/** A catalog entry of a rule a scan will run (core's CheckCatalogEntry has more). */
+export interface PlannedCheck {
+  ruleId: string;
+  title?: string;
+  tags?: string[];
+  [key: string]: unknown;
+}
+
+/** A catalog entry of a criterion a scan will report (core's RuleCatalogEntry has more). */
+export interface PlannedCriterion {
+  id: string;
+  title?: string;
+  [key: string]: unknown;
+}
+
 /** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
 export interface PackLike {
   name: string;
@@ -63,6 +78,10 @@ export class A11yCoreBuilderBase {
   reportOnly(outcomes: Outcome | Outcome[]): this;
   elementRef(enabled?: boolean): this;
   frames(enabled?: boolean): this;
+  /** The rules a scan with this builder will run, from core's getChecksForRunOnly(); in Node, no page needed (@surea11y/core 1.12.0 and later). */
+  plannedChecks(): PlannedCheck[];
+  /** The criteria a scan with this builder will report in rulesResults, from core's getRulesForRunOnly() (@surea11y/core 1.12.0 and later). */
+  plannedCriteria(): PlannedCriterion[];
   analyze(): unknown;
   _normalizeCustomRule(rule: CustomRuleDescriptor): CustomRuleDescriptor;
   _buildEngineArgs(): EngineArgs;

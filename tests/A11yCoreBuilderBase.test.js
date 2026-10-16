@@ -478,3 +478,23 @@ test('A11yCoreBuilderBase: withPacks() refuses what is not a pack, and _packScri
   const old = new A11yCoreBuilderBase().withPacks({ ...PACK, core: '^99.0.0' });
   assert.throws(() => old._packScript(), /supports core/);
 });
+
+test('A11yCoreBuilderBase: plannedChecks()/plannedCriteria() name the core release they need when the installed one is too old', () => {
+  const Module = require('node:module');
+  const load = Module._load;
+  Module._load = function (request, ...rest) {
+    if (request === '@surea11y/core') return { getChecksForRunOnly() { return []; } };
+    return load.call(this, request, ...rest);
+  };
+  try {
+    for (const method of ['plannedChecks', 'plannedCriteria']) {
+      assert.throws(
+        () => new A11yCoreBuilderBase().withRules('img-alt-present')[method](),
+        (err) => err.message.startsWith(`A11yCoreBuilder.${method}(): needs @surea11y/core 1.12.0 or later`),
+        method
+      );
+    }
+  } finally {
+    Module._load = load;
+  }
+});

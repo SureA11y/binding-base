@@ -29,6 +29,7 @@ const builder = new A11yCoreBuilderBase()
   .withWcag('2.1', 'aaa')
   .withPacks([pack]);
 const packScript: string | null = builder._packScript();
+const planned: string[] = builder.plannedChecks().map((c) => c.ruleId).concat(builder.plannedCriteria().map((r) => r.id));
 const { contextSelector, engineOptions, runOnly } = builder._buildEngineArgs();
 const scan = createInPageScan(runa11yCoreInPage);
 const scanned: ScanResult = rethrowEngineError(result);
