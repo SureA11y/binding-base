@@ -222,8 +222,8 @@ function iframeArgs(step) {
 function checkFramePath(framePath) {
   if (!Array.isArray(framePath)) throw new TypeError('_captureScreenshots(): framePath must be an array ([] for the top-level page).');
   for (const step of framePath) {
-    if (!step || typeof step !== 'object' || !('frame' in step) || step.iframe === undefined || step.iframe === null) {
-      throw new TypeError('_captureScreenshots(): each step of framePath must be { frame, iframe }: a parent frame, and the <iframe> in it as a selector, { selector, index } or an element handle.');
+    if (!step || typeof step !== 'object' || !('frame' in step) || step.iframe === undefined) {
+      throw new TypeError('_captureScreenshots(): each step of framePath must be { frame, iframe }: a parent frame, and the <iframe> in it as a selector, { selector, index } or an element handle (null when it is gone).');
     }
   }
 }
@@ -260,6 +260,9 @@ async function captureScreenshots(builder, result, frame, framePath) {
   let frameError = null;
   try {
     for (const step of framePath) {
+      // A binding that could not find the <iframe> (a frame detached after
+      // its scan) says so with null: nothing to ask its parent.
+      if (step.iframe === null) throw new Error('the <iframe> leading to the frame is gone');
       const { iframe, element } = iframeArgs(step);
       frameKey.push((await evaluate(step.frame, { op: 'frame-key', iframe }, element)).key);
     }

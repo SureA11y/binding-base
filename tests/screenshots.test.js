@@ -393,6 +393,16 @@ test('_captureScreenshots(): takes a base64 string, and leaves a result that is 
   assert.deepStrictEqual(failed, { url: 'https://example.com/', error: 'frame detached' });
 });
 
+test('_captureScreenshots(): an <iframe> the binding could not find (null) fails the frame\'s pictures without asking the page', async () => {
+  const top = layoutWindow(PAGE);
+  const child = layoutWindow(PAGE);
+  const b = new FakeBuilder().screenshots();
+  const o = occurrence('#near');
+  await b._captureScreenshots(resultWith([['img-alt-present', 'fail', [o]]]), child, [{ frame: top, iframe: null }]);
+  assert.deepStrictEqual(o.screenshot, { skipped: 'capture-failed', error: 'the <iframe> leading to the frame is gone' });
+  assert.deepStrictEqual(b.calls, []);
+});
+
 test('_captureScreenshots(): a binding passing a malformed framePath is told so', async () => {
   const b = new FakeBuilder().screenshots();
   const result = resultWith([['img-alt-present', 'fail', [occurrence('#near')]]]);
