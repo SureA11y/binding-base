@@ -14,7 +14,11 @@ import {
   cropViewportScreenshot,
   planScreenshots,
   screenshotFileName,
-  SCREENSHOT_DEFAULTS
+  SCREENSHOT_DEFAULTS,
+  prepareElementScreenshot,
+  releaseElementScreenshot,
+  screenshotFrameKey,
+  screenshotToken
 } from '../../src/index';
 import type { OccurrenceScreenshot, ScreenshotBox, ScreenshotView } from '../../src/index';
 import { runa11yCoreInPage } from '@surea11y/core';
@@ -89,4 +93,16 @@ const fileName: string = screenshotFileName([], null, 'img') + planScreenshots(r
 declare const field: OccurrenceScreenshot;
 const described: string = 'skipped' in field ? field.skipped : 'path' in field ? field.path : String(field.buffer.byteLength);
 
-export { message, element, where, packScript, shot, fileName, described };
+// A binding that takes the picture itself, between prepare and release.
+async function ownCapture(win: Window): Promise<string> {
+  const evaluateInFrame = (frame: Window, fn: (...args: any[]) => unknown, args: unknown[]) => fn(...args);
+  const frameKey: string[] = await screenshotFrameKey({ evaluateInFrame, framePath: [] });
+  const token = screenshotToken();
+  const [planned] = planScreenshots(result, { frameKey }).elements;
+  const ready = await prepareElementScreenshot({ evaluateInFrame, frame: win, element: planned, options: SCREENSHOT_DEFAULTS, token });
+  if ('skipped' in ready) return ready.skipped;
+  await releaseElementScreenshot({ evaluateInFrame, frame: win, token });
+  return `${ready.clip.width}x${ready.clip.height} at ${ready.view.devicePixelRatio}, element ${ready.box.width} cropped ${ready.cropped}`;
+}
+
+export { message, element, where, packScript, shot, fileName, described, ownCapture };

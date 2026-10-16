@@ -303,6 +303,31 @@ export function planScreenshots(
 /** `element-<8 hex digits>.png`, from where the element is: the same on every run and platform. */
 export function screenshotFileName(frameKey: string[], shadowHostSelectors: string[] | null | undefined, selector: string): string;
 
+/** How a binding runs a self-contained function in a frame: `fn(...args)`, resolving to what it returns (its `_evaluateInFrame()`). */
+export type EvaluateInFrame = (frame: any, fn: (...args: any[]) => unknown, args: unknown[]) => Promise<unknown> | unknown;
+
+/** The frame's name in file names: its <iframe>s, outermost first; [] for the page. Rejects when an <iframe> is gone. */
+export function screenshotFrameKey(opts: { evaluateInFrame: EvaluateInFrame; framePath?: FramePathStep[] }): Promise<string[]>;
+
+/** A token naming one element's capture, for prepareElementScreenshot() and releaseElementScreenshot(). */
+export function screenshotToken(): string;
+
+/** What to capture for one element, the page held until releaseElementScreenshot(); or why not, the page already put back. Never rejects. */
+export function prepareElementScreenshot(opts: {
+  evaluateInFrame: EvaluateInFrame;
+  frame: unknown;
+  framePath?: FramePathStep[];
+  element: Pick<PlannedScreenshot, 'selector' | 'shadowHostSelectors'>;
+  options: Readonly<Required<Omit<ScreenshotOptions, 'dir'>> & { dir: string | null }>;
+  token: string;
+}): Promise<
+  | { clip: ScreenshotBox; view: ScreenshotView; box: ScreenshotBox; cropped: boolean }
+  | { skipped: ScreenshotSkip; error?: string }
+>;
+
+/** Puts the page back after prepareElementScreenshot() with the same token. Never rejects. */
+export function releaseElementScreenshot(opts: { evaluateInFrame: EvaluateInFrame; frame: unknown; framePath?: FramePathStep[]; token: string }): Promise<void>;
+
 /** The self-contained in-page step of the screenshots, for a driver to send into a frame, as `screenshotInPage(request, element?)`. */
 export function screenshotInPage(request: { op: string; [key: string]: unknown }, element?: unknown): unknown;
 
