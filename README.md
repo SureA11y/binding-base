@@ -219,7 +219,7 @@ What a binding's docs should say about it, in its own words:
 - **What it can't cover.** Frames the driver's before-load API doesn't reach (Cypress's `window:before:load` reaches the app's frame only), and drivers with no before-load script at all.
 - **What a page can notice.** `HTMLElement.prototype.attachInternals` is no longer native code, an extra stack frame appears in errors thrown through it, and a global symbol (`Symbol.for('surea11y.internals')`) holds the record. Any script on the page can read every component's internals through it, so it is for test and audit runs, not production.
 
-Each binding needs no other code for the advice: `_warnScanGaps()` prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook.
+A binding needs no other code for the advice, as long as its `analyze()` calls the shared `_warnScanGaps(result, source)` rather than a `_warnScanGaps()` of its own: it prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook, and hands it to `logger()` when one is set.
 
 ## Testing
 
