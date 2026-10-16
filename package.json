@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/binding-base",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Internal helpers shared by surea11y's bindings and test matcher -- not useful on its own. To check accessibility, install @surea11y/playwright, /cypress, /test-matchers or another binding instead.",
   "keywords": [
     "surea11y",
