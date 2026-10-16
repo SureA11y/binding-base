@@ -47,6 +47,76 @@ export interface PlannedCriterion {
   [key: string]: unknown;
 }
 
+/** What `.screenshots()` takes; each option left out keeps its default. */
+export interface ScreenshotOptions {
+  /** Write each picture there as `element-<hash>.png`; without it, each comes back as a Buffer. */
+  dir?: string;
+  /** Which occurrences to picture, by their own outcome (`occurrenceOutcome` where given). Default `['fail']`. */
+  outcomes?: Outcome[];
+  /** CSS pixels of context around the element. Default 0. */
+  padding?: number;
+  /** Draw a box around the element, over the page. Default true. */
+  highlight?: boolean;
+  /** At most this many pictures per scan. Default 50. */
+  max?: number;
+}
+
+/** Why an occurrence has no picture. */
+export type ScreenshotSkip =
+  | 'no-element'
+  | 'page-level'
+  | 'not-rendered'
+  | 'zero-size'
+  | 'off-screen'
+  | 'max-reached'
+  | 'capture-failed';
+
+/**
+ * A picture's bytes: Node's Buffer where its types are installed, which is
+ * what the pictures are; a Uint8Array, which Buffer extends, elsewhere.
+ */
+export type ScreenshotBuffer = typeof globalThis extends { Buffer: { prototype: infer B } } ? B : Uint8Array;
+
+/** A box in CSS pixels. */
+export interface ScreenshotBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The `screenshot` field `.screenshots()` puts on each occurrence it
+ * considered: the picture, with where the element shows in it (`box`, CSS
+ * pixels; the image itself may be larger by the device pixel ratio) and
+ * `cropped` when only part of the element shows; or why there is none.
+ * Occurrences about the same element share one object.
+ */
+export type OccurrenceScreenshot =
+  | { path: string; box: ScreenshotBox; cropped?: true }
+  | { buffer: ScreenshotBuffer; box: ScreenshotBox; cropped?: true }
+  | { skipped: ScreenshotSkip; error?: string };
+
+/** The top-level page when a picture is taken: the second argument of `_captureBox()`. */
+export interface ScreenshotView {
+  devicePixelRatio: number;
+  /** innerWidth and innerHeight, in CSS pixels. */
+  viewport: { width: number; height: number };
+  /** scrollX and scrollY, in CSS pixels. */
+  scroll: { x: number; y: number };
+}
+
+/**
+ * One <iframe> on the way from the top-level page to a scanned frame: the
+ * frame holding it, as the binding's `_evaluateInFrame()` takes it, and the
+ * <iframe> in it as a CSS selector, `{ selector, index }` (by default among
+ * `'iframe, frame'`) or a driver's element handle.
+ */
+export interface FramePathStep<Frame = unknown> {
+  frame: Frame;
+  iframe: string | { selector?: string; index: number } | object;
+}
+
 /** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
 export interface PackLike {
   name: string;
@@ -77,6 +147,8 @@ export class A11yCoreBuilderBase {
   withPacks(packs: PackLike | PackLike[]): this;
   reportOnly(outcomes: Outcome | Outcome[]): this;
   elementRef(enabled?: boolean): this;
+  /** A picture of each element the scan flags, on its occurrences' `screenshot` field; `false` turns them off. Throws a TypeError with code INVALID_ENGINE_OPTIONS for an option it can't use. */
+  screenshots(options?: ScreenshotOptions | boolean): this;
   frames(enabled?: boolean): this;
   /** The rules a scan with this builder will run, from core's getChecksForRunOnly(); in Node, no page needed (@surea11y/core 1.12.0 and later). */
   plannedChecks(): PlannedCheck[];
@@ -90,6 +162,12 @@ export class A11yCoreBuilderBase {
   /** Sends each of a frame's scan gaps to the logger(), or prints it with console.warn as `<source> (<url>): <message>`. */
   _warnScanGaps(result: unknown, source: string): void;
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
+  /** The screenshots step, once per scanned frame, after the scan and before reportOnly(); does nothing unless screenshots() was called. */
+  _captureScreenshots<T>(result: T, frame: unknown, framePath?: FramePathStep[]): Promise<T>;
+  /** Implemented by a binding that takes screenshots: run `fn(...args)` in `frame` and resolve to its result. */
+  _evaluateInFrame?(frame: unknown, fn: (...args: any[]) => unknown, args: unknown[]): Promise<unknown>;
+  /** Implemented by a binding that takes screenshots: a PNG of `box`, CSS pixels relative to the top-level viewport. */
+  _captureBox?(box: ScreenshotBox, view: ScreenshotView): Promise<Uint8Array | string>;
 }
 
 /** The `code` on an error @surea11y/core throws for input it cannot use (1.10.0 and later). */
@@ -197,3 +275,39 @@ export function queryOccurrenceElement(
 
 /** The occurrence's location for a person to read, as `host >>> selector`; empty without a selector. */
 export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null | undefined): string;
+
+
+/** The options `.screenshots()` uses for what it isn't given. */
+export const SCREENSHOT_DEFAULTS: Readonly<Required<Omit<ScreenshotOptions, 'dir'>> & { dir: string | null }>;
+
+/** Every reason an occurrence can have no picture. */
+export const SCREENSHOT_SKIPS: ScreenshotSkip[];
+
+/** One element to picture, and the occurrences about it. */
+export interface PlannedScreenshot {
+  key: string;
+  /** Its file name, from screenshotFileName(). */
+  name: string;
+  selector: string;
+  shadowHostSelectors: string[] | null;
+  occurrences: object[];
+}
+
+/** Which elements of one frame's result to picture, grouped by element, and the occurrences with no selector. Changes nothing. */
+export function planScreenshots(
+  result: ScanResultLike | null | undefined,
+  opts?: { outcomes?: ReadonlyArray<Outcome>; frameKey?: string[] }
+): { elements: PlannedScreenshot[]; unlocated: object[] };
+
+/** `element-<8 hex digits>.png`, from where the element is: the same on every run and platform. */
+export function screenshotFileName(frameKey: string[], shadowHostSelectors: string[] | null | undefined, selector: string): string;
+
+/** The self-contained in-page step of the screenshots, for a driver to send into a frame, as `screenshotInPage(request, element?)`. */
+export function screenshotInPage(request: { op: string; [key: string]: unknown }, element?: unknown): unknown;
+
+/** For `_captureBox()` when the driver only takes the whole viewport: cuts `box` out of that PNG (a Buffer or base64). */
+export function cropViewportScreenshot(
+  image: Uint8Array | string,
+  box: ScreenshotBox,
+  view?: Partial<Pick<ScreenshotView, 'devicePixelRatio' | 'viewport'>>
+): ScreenshotBuffer;

@@ -88,6 +88,28 @@ Extracted once five real consumers existed and the duplication was actually cost
   ```
 
   A batch job that writes `getScanGaps()` into its own report can use `.logger(() => {})` to keep its output to the report. A binding's `analyze()` calls `this._warnScanGaps(result, '@surea11y/<binding>')` for each scanned frame's result. It passes over anything that isn't a scan result, such as a frame that errored. `@surea11y/cypress` shows gaps in the Command Log instead and doesn't use it.
+- **`screenshots(options?)`** — a picture of each element a scan flags, beside its finding. Off by default: pictures of real pages can hold personal data, and they end up as CI artifacts. Each occurrence considered gets a `screenshot` field:
+
+  ```js
+  const results = await new A11yCoreBuilder({ page })
+    .screenshots({ dir: 'a11y-shots', padding: 16 })
+    .analyze();
+
+  results.checksResults[0].occurrences[0].screenshot;
+  // { path: 'a11y-shots/element-3f9a1c07.png', box: { x: 20, y: 20, width: 120, height: 40 } }
+  ```
+
+  | Option | Default | |
+  |---|---|---|
+  | `dir` | none | Write each picture there. Without it, each comes back as `{ buffer, box }`, for a caller that stores images its own way. |
+  | `outcomes` | `['fail']` | Which occurrences to picture, by their own outcome: `occurrenceOutcome` where the rule gives one, else the rule's. For contrast, `['fail', 'cantTell']` shows the background the engine couldn't judge. |
+  | `padding` | `0` | CSS pixels of context around the element. |
+  | `highlight` | `true` | Draw a box around the element. It is drawn over the page, outside the element, and removed after; the element itself is never restyled, which could change the contrast being reported. With it, the picture holds at least the 4px it takes. |
+  | `max` | `50` | At most this many pictures per scan, frames included. |
+
+  One picture per element: the occurrences about the same element share one `screenshot` object and one file, named `element-` and a hash of where the element is (frame, shadow hosts, selector), so it keeps its name from run to run. `box` is where the element shows in the picture, in CSS pixels (the image is larger by the device pixel ratio), and `cropped: true` says only part of it shows, as for an element taller than the viewport, which is pictured from its top-left corner. With no picture, `screenshot` says why: `{ skipped }` with `'no-element'` (no selector, or nothing matches it), `'page-level'` (a finding about the whole page, on `<html>`, `<head>` or `<body>`), `'not-rendered'` (no layout box, such as `display: none`), `'zero-size'`, `'off-screen'` (outside the page, such as `left: -9999px`), `'max-reached'` or `'capture-failed'` (with the driver's `error`). A failed picture never fails the scan.
+
+  The element is scrolled into view for its picture and the page is put back afterwards: scroll positions, and the highlight removed, also when a capture fails. Something drawn over the element, such as a sticky header, shows as it does on screen. The pictures are taken right after each frame's scan, but focus, hover, animations or content that loads late can still differ from what the scan saw. `.screenshots()` and `.screenshots(true)` use the defaults, `.screenshots(false)` turns them off, and each call replaces the previous options. An option it can't use throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and so does a scan with `output.includeSelector: false`, since an element is found by its selector. `formatFailures()` names each written file under its finding (`   screenshot: a11y-shots/element-3f9a1c07.png`). A binding that doesn't take screenshots yet throws when `.screenshots()` is called; see [Screenshots of failing elements](#screenshots-of-failing-elements) for what one needs.
 - **`queryOccurrenceElement(selector, shadowHostSelectors, root?)`** — finds the element an occurrence points at, through its shadow hosts. Since core 1.10.0 an occurrence inside a shadow tree carries `shadowHostSelectors`, and its `selector` holds only inside the last host's shadow root, so looking it up in the document finds the wrong element or none. Self-contained, so a driver can send it into the page. **`formatOccurrenceLocation(occurrence)`** gives the same location as text, `host >>> selector`.
 
 ### `withPacks(packs)` and `_packScript()`
@@ -221,9 +243,52 @@ What a binding's docs should say about it, in its own words:
 
 A binding needs no other code for the advice, as long as its `analyze()` calls the shared `_warnScanGaps(result, source)` rather than a `_warnScanGaps()` of its own: it prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook, and hands it to `logger()` when one is set.
 
+### Screenshots of failing elements
+
+A screenshot has to come from whatever drives the browser: nothing in a page's JavaScript can read what was painted. Everything else is shared: `_captureScreenshots()` plans the pictures, runs its in-page step in each frame (find the element, scroll it into view, draw the highlight, put the page back), works out where the element is on the top-level page across frames, names and writes the files, and fills in `screenshot`. A binding gives it the driver through two methods, and calls it once per scanned frame, after the scan and before `reportOnly()`:
+
+```js
+class A11yCoreBuilder extends A11yCoreBuilderBase {
+  // Run fn(...args) in the frame and resolve to what it returns (a plain
+  // value; fn may return a Promise, which the driver waits for). `frame` is
+  // whatever this binding passes in, given back unchanged.
+  _evaluateInFrame(frame, fn, args) { /* page.evaluate / executeScript / browser.execute */ }
+
+  // A PNG (Buffer or base64) of `box`: whole CSS pixels relative to the
+  // top-level page's viewport. `view` is { devicePixelRatio, viewport, scroll }
+  // of the top-level page.
+  _captureBox(box, view) { /* the driver's screenshot */ }
+
+  async analyze() {
+    // ...for each scanned frame:
+    const result = rethrowEngineError(await frame.evaluate(inPageScan, ...));
+    await this._captureScreenshots(result, frame, framePath); // nothing unless .screenshots() was called
+    return this._applyReportOnly(result);
+  }
+}
+```
+
+`framePath` leads from the top-level page to the scanned frame, outermost first: one `{ frame, iframe }` per `<iframe>` on the way, where `frame` is the frame holding it (as `_evaluateInFrame()` takes it) and `iframe` is that `<iframe>` in it, given whichever way the driver has it: a CSS selector, `{ selector, index }` (the index among the elements `selector` matches, by default `'iframe, frame'`), or an element handle. Leave it out, or pass `[]`, for the top-level page. The top-level page must be the first frame of a scan, as it is in every binding: a scan's `max` and file names count from it. The frame's name in a file name is worked out in the page from the `<iframe>` itself, so it is the same whichever way it is given.
+
+Per driver. The Puppeteer, Playwright and Selenium rows were checked against real browsers (Chromium, Firefox and WebKit through Playwright, Chrome through Puppeteer and Selenium, at device pixel ratios 1 and 2); WebdriverIO's follows Selenium's, through its own calls:
+
+| Binding | `_evaluateInFrame(frame, fn, args)` | `_captureBox(box, view)` | A step of `framePath` |
+|---|---|---|---|
+| Puppeteer | `frame.evaluate(fn, ...args)` | `page.screenshot({ clip: { ...box, x: box.x + view.scroll.x, y: box.y + view.scroll.y } })`: its clip is relative to the document | `{ frame: f.parentFrame(), iframe: await f.frameElement() }` |
+| Playwright | `frame.evaluate(new Function('args', 'return (' + fn + ')(...args)'), args)`: its evaluate takes one argument | `page.screenshot({ clip: box })`: its clip is relative to the viewport | as Puppeteer |
+| Selenium | switch to the frame, then `driver.executeScript(fn, ...args)` | `cropViewportScreenshot(await driver.takeScreenshot(), box, view)` | `{ frame: parentPath, iframe: { index } }`, the index of its `By.css('iframe, frame')` |
+| WebdriverIO | switch to the frame, then `browser.execute(fn, ...args)` | `cropViewportScreenshot(await browser.takeScreenshot(), box, view)` | `{ frame: parentPath, iframe: { selector: 'iframe', index } }`, as its `$$('iframe')` |
+| Cypress | — | — | overrides `_captureScreenshots()` |
+
+A driver that switches frames is left in whichever frame the step used last, the top-level page in a frame scan: switch back if the traversal goes on from the scanned frame. **`cropViewportScreenshot(image, box, view)`** cuts the box out of a whole-viewport screenshot in Node, with no image library and nothing from the page, scaling CSS pixels by the image's width over the viewport's.
+
+Cypress's `analyze()` returns a chainable and its specs run in the browser, so its builder overrides `_captureScreenshots()` and runs the same plan through its own commands: **`planScreenshots(result, { outcomes, frameKey })`** lists the elements to picture, grouped as the shared step groups them, with their file names (**`screenshotFileName()`**); **`screenshotInPage`** is the in-page step, for `win.eval('(' + screenshotInPage + ')')`; and `cy.screenshot()` takes the picture where Cypress keeps its own. `SCREENSHOT_SKIPS` lists the reasons a `screenshot` can give.
+
+A binding that implements neither (an older one) throws an error naming the two methods when `.screenshots()` is called, so it never silently takes no pictures.
+
 ## Proposals
 
-- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — designed, planned for 1.5.0: a `.screenshots()` option for pictures of the elements a scan flags (off by default, one per element, a Buffer unless `dir` is given), with what goes in this package and what each binding adds.
+- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — the design of `.screenshots()`, built in this package for 1.5.0: what each binding adds, and what was decided and why.
 
 ## Testing
 
@@ -233,7 +298,7 @@ No browser needed:
 npm test
 ```
 
-Besides unit tests, this runs the builder's arguments through the real `@surea11y/core` in jsdom, sending the scan and `queryOccurrenceElement()` into the page from their source as a driver does, and compiles `src/index.d.ts` against core's own types. `@surea11y/core`, `jsdom` and `typescript` are dev dependencies only.
+Besides unit tests, this runs the builder's arguments through the real `@surea11y/core` in jsdom, sending the scan and `queryOccurrenceElement()` into the page from their source as a driver does, drives `.screenshots()` through a fake binding whose frames are jsdom windows given a layout, decodes and crops PNGs of every kind a browser writes, and compiles `src/index.d.ts` against core's own types. `@surea11y/core`, `jsdom` and `typescript` are dev dependencies only.
 
 ## Maintainer
 

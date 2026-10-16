@@ -26,7 +26,8 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  * README.md.
  *
  * An occurrence inside a shadow tree is located through its shadow hosts,
- * as `my-app >>> my-card >>> img` (see formatOccurrenceLocation()).
+ * as `my-app >>> my-card >>> img` (see formatOccurrenceLocation()). One
+ * pictured by `.screenshots({ dir })` names its file below that.
  *
  * Given a whole scan result rather than its checksResults, it also says
  * what the scan left out (getScanGaps(): a scope that matched nothing,
@@ -90,6 +91,10 @@ function formatChecks(checksResults, outcomes) {
       const location = formatOccurrenceLocation(occurrence);
       if (location) lines.push(`   at ${location}`);
       if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
+      // A picture written to a file by .screenshots({ dir }); one held as a
+      // buffer, or skipped, has nothing to point to.
+      const shot = occurrence.screenshot;
+      if (shot && typeof shot.path === 'string' && shot.path) lines.push(`   screenshot: ${shot.path}`);
     }
   }
   return lines.join('\n');
