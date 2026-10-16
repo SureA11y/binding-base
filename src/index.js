@@ -7,6 +7,9 @@ const { formatFailures } = require('./formatFailures');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { queryOccurrenceElement, formatOccurrenceLocation } = require('./shadowDom');
+const { SCREENSHOT_DEFAULTS, SCREENSHOT_SKIPS, planScreenshots, screenshotFileName } = require('./screenshots');
+const { screenshotInPage } = require('./screenshotsInPage');
+const { cropViewportScreenshot } = require('./png');
 
 module.exports = {
   A11yCoreBuilderBase,
@@ -22,5 +25,11 @@ module.exports = {
   getScanGaps,
   getScanNotes,
   queryOccurrenceElement,
-  formatOccurrenceLocation
+  formatOccurrenceLocation,
+  SCREENSHOT_DEFAULTS,
+  SCREENSHOT_SKIPS,
+  planScreenshots,
+  screenshotFileName,
+  screenshotInPage,
+  cropViewportScreenshot
 };

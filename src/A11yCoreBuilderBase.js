@@ -3,6 +3,7 @@
 const { toReconstructableSource } = require('./customRuleReconstruction');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
+const { normalizeScreenshotOptions, captureScreenshots } = require('./screenshots');
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -47,6 +48,12 @@ function normalizeLevel(level) {
   return typeof level === 'string' ? level.trim().toUpperCase() : level;
 }
 
+// How core reads an on/off engine option (see its docs/ENGINE_OPTIONS.md):
+// these spell off.
+function isOff(value) {
+  return value === false || value === 0 || value === 'false' || value === '0';
+}
+
 // What surea11y's runOnly.includeMode accepts.
 const INCLUDE_MODES = ['and', 'or'];
 
@@ -87,9 +94,9 @@ function selectionValues(method, kind, value) {
  * `disableTags()`/`options()`/`withCustomRules()`/`withPacks()` accumulate
  * across calls, with no reset between `analyze()` calls -- create one
  * builder per scan. `reportOnly()`/`frames()`/`elementRef()`/`withWcag()`/
- * `withBestPractices()`/`includeMode()`/`wcagLevel()`/`logger()` are the
- * exception: each call replaces the previous value rather than merging with
- * it.
+ * `withBestPractices()`/`includeMode()`/`wcagLevel()`/`logger()`/
+ * `screenshots()` are the exception: each call replaces the previous value
+ * rather than merging with it.
  */
 class A11yCoreBuilderBase {
   /**
@@ -119,6 +126,8 @@ class A11yCoreBuilderBase {
     this._customRules = [];
     this._packs = [];
     this._packScriptSource = null;
+    this._screenshots = null;
+    this._screenshotScan = null;
   }
 
   /**
@@ -412,6 +421,51 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * Opt in to a picture of each element the scan flags, beside its finding:
+   * every occurrence considered gets a `screenshot` field, the picture
+   * (`{ buffer, box }`, or `{ path, box }` with `dir`) or why there is none
+   * (`{ skipped }`). Off by default: pictures of real pages can hold
+   * personal data, and they end up as CI artifacts.
+   *
+   * One picture per element: the occurrences that point at the same element
+   * share it. `outcomes` (default `['fail']`) picks occurrences by their own
+   * outcome (`occurrenceOutcome` where the rule gives one), `padding` (CSS
+   * px, default 0) adds context around the element, `highlight` (default
+   * true) draws a box around it over the page, and `max` (default 50) is
+   * how many pictures one scan takes. With `dir`, each picture is written
+   * there as `element-<hash>.png`, named after where the element is, so it
+   * keeps its name from run to run.
+   *
+   * `.screenshots()` and `.screenshots(true)` turn them on with the
+   * defaults, `.screenshots(false)` off; each call replaces the previous
+   * options. Throws a TypeError with `code: 'INVALID_ENGINE_OPTIONS'` for an
+   * option it can't use, and an Error when the binding doesn't take
+   * screenshots (see `_captureScreenshots()`).
+   * @param {{ dir?: string, outcomes?: string[], padding?: number, highlight?: boolean, max?: number }|boolean} [options]
+   */
+  screenshots(options) {
+    const normalized = normalizeScreenshotOptions(options);
+    if (normalized && !this._takesScreenshots()) {
+      throw new Error(
+        'A11yCoreBuilder.screenshots(): this binding does not take screenshots yet. ' +
+        'A binding takes them by implementing _evaluateInFrame() and _captureBox() and calling _captureScreenshots() in analyze() ' +
+        '(see @surea11y/binding-base\'s README.md, "Screenshots of failing elements").'
+      );
+    }
+    this._screenshots = normalized;
+    return this;
+  }
+
+  /**
+   * Whether this binding can take screenshots: it implements the two
+   * driver methods the shared step uses, or replaces the step itself.
+   */
+  _takesScreenshots() {
+    if (this._captureScreenshots !== A11yCoreBuilderBase.prototype._captureScreenshots) return true;
+    return typeof this._evaluateInFrame === 'function' && typeof this._captureBox === 'function';
+  }
+
+  /**
    * Opt in to also scanning every sub-frame reachable from the top page.
    * Default off; when off, analyze() returns the same single native result
    * object it always has. When on, analyze() instead returns
@@ -492,6 +546,14 @@ class A11yCoreBuilderBase {
       : null;
 
     const engineOptions = { ...this._engineOptions };
+    // Screenshots find each element by its selector: without selectors
+    // there would be nothing to picture, so say so before the scan runs
+    // rather than skip every occurrence.
+    if (this._screenshots && engineOptions.output && typeof engineOptions.output === 'object' && isOff(engineOptions.output.includeSelector)) {
+      const err = new TypeError('A11yCoreBuilder.screenshots(): screenshots find each element by its selector, so they need output.includeSelector; turn one of them off.');
+      err.code = 'INVALID_ENGINE_OPTIONS';
+      throw err;
+    }
     if (this._wcagLevel) engineOptions.wcagLevel = this._wcagLevel;
     if (this._customRules.length) {
       // Concatenated with, not replaced by, any customRules already present
@@ -593,6 +655,59 @@ class A11yCoreBuilderBase {
       ...result,
       checksResults: result.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
     };
+  }
+
+  /**
+   * The screenshots step, for a subclass's analyze() to call once per
+   * scanned frame, after the scan and before reportOnly(); it does nothing
+   * unless `.screenshots()` was called:
+   *
+   *   const result = rethrowEngineError(await frame.evaluate(inPageScan, ...));
+   *   await this._captureScreenshots(result, frame, framePath);
+   *   return this._applyReportOnly(result);
+   *
+   * It plans the pictures, runs its in-page step in the frames, works out
+   * where the element is on the top-level page, names and writes the files
+   * and puts `screenshot` on the occurrences. It reaches the driver through
+   * two methods the subclass implements:
+   *
+   * - `_evaluateInFrame(frame, fn, args)`: run the self-contained `fn` in
+   *   `frame` as `fn(...args)` and resolve to what it returns (a plain,
+   *   JSON-safe value; `fn` may return a Promise). `frame` is whatever the
+   *   subclass passes here or in `framePath`, given back unchanged: a
+   *   Playwright or Puppeteer Frame, or what a driver that switches frames
+   *   needs to switch there. `args` are JSON values, except that the second
+   *   one may be an element handle the subclass put in `framePath`.
+   * - `_captureBox(box, view)`: resolve to a PNG (a Buffer, or a base64
+   *   string) of `box`, whole CSS pixels relative to the top-level page's
+   *   viewport. `view` is `{ devicePixelRatio, viewport, scroll }` of the
+   *   top-level page (`viewport` its innerWidth/innerHeight, `scroll` its
+   *   scrollX/scrollY), for a driver whose clip is relative to the document
+   *   or that only takes the whole viewport, which cropViewportScreenshot()
+   *   then cuts.
+   *
+   * `framePath` leads from the top-level page to `frame`, outermost first:
+   * one `{ frame, iframe }` per `<iframe>` on the way, `frame` the frame
+   * holding that `<iframe>` (as `_evaluateInFrame()` takes it) and `iframe`
+   * the `<iframe>` in it: a CSS selector, `{ selector, index }` (the index
+   * among the elements `selector` matches, by default `'iframe, frame'`),
+   * or an element handle in that frame. `[]` (the default) for the
+   * top-level page, which must be the first frame a scan passes, since a
+   * scan's `max` and file names count from it.
+   *
+   * Never throws for a picture it can't take: the occurrences get
+   * `{ skipped }`, and the result is returned as the scan gave it, with the
+   * field added. A subclass whose analyze() isn't Promise-based (Cypress)
+   * overrides this step instead, with planScreenshots() and
+   * screenshotInPage.
+   * @param {object} result one frame's scan result, changed in place
+   * @param {*} frame the scanned frame, as `_evaluateInFrame()` takes it
+   * @param {Array<{ frame: *, iframe: (string|{ selector?: string, index: number }|object) }>} [framePath]
+   * @returns {Promise<object>} `result`
+   */
+  async _captureScreenshots(result, frame, framePath = []) {
+    if (!this._screenshots) return result;
+    return captureScreenshots(this, result, frame, framePath);
   }
 
   /**

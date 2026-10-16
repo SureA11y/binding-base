@@ -10,8 +10,13 @@ import {
   getScanGaps,
   getScanNotes,
   queryOccurrenceElement,
-  rethrowEngineError
+  rethrowEngineError,
+  cropViewportScreenshot,
+  planScreenshots,
+  screenshotFileName,
+  SCREENSHOT_DEFAULTS
 } from '../../src/index';
+import type { OccurrenceScreenshot, ScreenshotBox, ScreenshotView } from '../../src/index';
 import { runa11yCoreInPage } from '@surea11y/core';
 import { definePack } from '@surea11y/core/pack';
 
@@ -68,4 +73,20 @@ try {
   if (e instanceof EngineError && e.code === 'INVALID_ENGINE_OPTIONS') String(e.message);
 }
 
-export { message, element, where, packScript };
+// A binding that takes screenshots: two driver methods, and the step in analyze().
+declare const page: { evaluate(fn: (...args: any[]) => unknown, ...args: unknown[]): Promise<unknown>; screenshot(o: object): Promise<Uint8Array> };
+class ShotBuilder extends A11yCoreBuilderBase {
+  _evaluateInFrame(frame: unknown, fn: (...args: any[]) => unknown, args: unknown[]): Promise<unknown> {
+    return page.evaluate(fn, ...args);
+  }
+  async _captureBox(box: ScreenshotBox, view: ScreenshotView): Promise<Uint8Array> {
+    return cropViewportScreenshot(await page.screenshot({}), box, view);
+  }
+}
+const shots = new ShotBuilder().screenshots({ dir: 'a11y-shots', outcomes: ['fail', 'cantTell'], padding: 8, highlight: true, max: 10 }).screenshots(false).screenshots();
+const shot: Promise<ScanResult> = shots._captureScreenshots(scanned, page, [{ frame: page, iframe: { index: 0 } }, { frame: page, iframe: '#checkout' }]);
+const fileName: string = screenshotFileName([], null, 'img') + planScreenshots(result, { outcomes: SCREENSHOT_DEFAULTS.outcomes }).elements.map((e) => e.name).join();
+declare const field: OccurrenceScreenshot;
+const described: string = 'skipped' in field ? field.skipped : 'path' in field ? field.path : String(field.buffer.byteLength);
+
+export { message, element, where, packScript, shot, fileName, described };
