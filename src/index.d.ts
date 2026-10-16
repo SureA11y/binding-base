@@ -28,6 +28,8 @@ export interface EngineArgs {
 
 export type WcagVersion = '2.0' | '2.1' | '2.2';
 export type WcagLevel = 'A' | 'AA' | 'AAA';
+/** A level as withWcag() and wcagLevel() take it: in any case, as core reads it. */
+export type WcagLevelInput = WcagLevel | Lowercase<WcagLevel> | 'Aa' | 'Aaa';
 export type IncludeMode = 'and' | 'or';
 
 /** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
@@ -45,13 +47,13 @@ export class A11yCoreBuilderBase {
   withRules(ruleIds: string | string[]): this;
   disableRules(ruleIds: string | string[]): this;
   /** Run the rules for a WCAG conformance target (@surea11y/core 1.11 and later). */
-  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevelInput): this;
   /** Also run the best-practice rules, those that name no WCAG criterion (@surea11y/core 1.11 and later). */
   withBestPractices(enabled?: boolean): this;
   /** How withTags() and withRules() combine when both are given: 'and' (the engine's default) or 'or'. */
   includeMode(mode: IncludeMode): this;
-  /** The WCAG level of the criteria the scan reports, without changing which rules run; null clears it (needs the @surea11y/core release after 1.11.1). */
-  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
+  /** The WCAG level of the criteria the scan reports, without changing which rules run; null clears it (@surea11y/core 1.12.0 and later). */
+  wcagLevel(level: WcagLevelInput | null): this;
   /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result. `null` goes back to console.warn. */
   logger(fn: ((gap: ScanGap, result: ScanResultLike) => void) | null): this;
   options(partialEngineOptions: Record<string, unknown>): this;

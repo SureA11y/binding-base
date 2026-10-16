@@ -24,6 +24,8 @@ const builder = new A11yCoreBuilderBase()
   .withBestPractices()
   .includeMode('or')
   .wcagLevel('AA')
+  .wcagLevel('aa')
+  .withWcag('2.1', 'aaa')
   .withPacks([pack]);
 const packScript: string | null = builder._packScript();
 const { contextSelector, engineOptions, runOnly } = builder._buildEngineArgs();
