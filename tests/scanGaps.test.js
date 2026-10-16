@@ -60,6 +60,17 @@ test('getScanGaps(): one gap per skipped custom rule, with or without an id', ()
   ]);
 });
 
+test('getScanGaps(): a custom rule the caller excluded is not a gap', () => {
+  const gaps = getScanGaps(result({
+    skippedCustomRules: [
+      { id: 'excluded-rule', reason: 'excluded by the selection.', excluded: true },
+      { id: 'older-core', reason: 'excluded by the selection.' },
+      { id: 'not-selected', reason: 'not selected under profile "wcag22-aa": give it the tags of the criteria it checks.' }
+    ]
+  }));
+  assert.deepStrictEqual(gaps.map((g) => g.rule.id), ['not-selected'], 'a rule the selection left out on its own is still a gap');
+});
+
 test('getScanGaps(): throws a TypeError for anything but one scan result', () => {
   for (const bad of [undefined, null, [], {}, { topFrame: result(), frames: [] }]) {
     assert.throws(() => getScanGaps(bad), TypeError);

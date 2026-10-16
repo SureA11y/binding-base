@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 const core = require('@surea11y/core');
-const { A11yCoreBuilderBase, formatFailures } = require('../src/index.js');
+const { A11yCoreBuilderBase, formatFailures, getScanGaps } = require('../src/index.js');
 
 const PAGE = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"></main></body></html>';
 
@@ -107,6 +107,19 @@ test('core contract: results carry engine.version, contextMatch and skippedCusto
   }
 });
 
+test('core contract: a custom rule disableRules() leaves out is listed as excluded, and is no scan gap', () => {
+  const page = pageScan();
+  try {
+    const rule = { id: 'org-rule', runInPage: () => ({ outcome: 'pass', occurrences: [] }) };
+    const result = page.scan(new A11yCoreBuilderBase().withCustomRules(rule).disableRules('org-rule'));
+    assert.deepStrictEqual(result.skippedCustomRules, [{ id: 'org-rule', reason: 'excluded by the selection.', excluded: true }]);
+    assert.deepStrictEqual(getScanGaps(result), []);
+    assert.doesNotMatch(formatFailures(result), /did not run|in what was scanned/);
+  } finally {
+    page.close();
+  }
+});
+
 test('core contract: withCustomRules() method shorthand runs in the engine', () => {
   const page = pageScan();
   try {
@@ -159,7 +172,6 @@ test('core contract: formatFailures() and getScanGaps() read a real scoped resul
 // --- 1.11: packs, WCAG targets, best practices, strict options --------------------
 
 const { definePack, wcagTags } = require('@surea11y/core/pack');
-const { getScanGaps } = require('../src/index.js');
 
 const MARQUEE_PAGE = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"><marquee>News</marquee></main></body></html>';
 
