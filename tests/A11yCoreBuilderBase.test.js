@@ -424,8 +424,14 @@ test('A11yCoreBuilderBase: withWcag() sets runOnly.wcag, replaced by a later cal
   assert.deepStrictEqual(new A11yCoreBuilderBase().withWcag(2.2)._buildEngineArgs().runOnly.wcag, { version: '2.2', level: 'AA' });
 });
 
+test('A11yCoreBuilderBase: withWcag() and wcagLevel() read the level in any case, trimmed, and send it in capitals', () => {
+  assert.deepStrictEqual(new A11yCoreBuilderBase().withWcag('2.2', 'aa')._buildEngineArgs().runOnly.wcag, { version: '2.2', level: 'AA' });
+  assert.deepStrictEqual(new A11yCoreBuilderBase().withWcag('2.1', ' Aaa ')._buildEngineArgs().runOnly.wcag, { version: '2.1', level: 'AAA' });
+  assert.strictEqual(new A11yCoreBuilderBase().wcagLevel(' a ')._buildEngineArgs().engineOptions.wcagLevel, 'A');
+});
+
 test('A11yCoreBuilderBase: withWcag() throws INVALID_RUN_ONLY for a version or level the engine has not', () => {
-  for (const [version, level] of [['3.0', 'AA'], ['2.2', 'AAAA'], [undefined, 'AA'], ['2.2', 'aa']]) {
+  for (const [version, level] of [['3.0', 'AA'], ['2.2', 'AAAA'], [undefined, 'AA'], ['2.2', ''], ['2.2', 2]]) {
     assert.throws(
       () => new A11yCoreBuilderBase().withWcag(version, level),
       (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY' && /withWcag\(\)/.test(err.message),

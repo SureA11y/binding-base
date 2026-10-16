@@ -11,7 +11,7 @@ Extracted once five real consumers existed and the duplication was actually cost
 ## What's here
 
 - **`A11yCoreBuilderBase`** — a class each binding's own `A11yCoreBuilder` extends. Owns the constructor's shared state, every scoping/config method, and `_buildEngineArgs()` (derives surea11y's `(pageUrl, contextSelector, engineOptions, runOnly)` call shape from that state). Does **not** implement `analyze()` — that's 100% driver-specific and stays in each binding.
-- **`withWcag(version, level?)` / `withBestPractices()`** — select by conformance target, core 1.11's `runOnly.wcag`: `withWcag('2.2', 'AA')` runs the rules for WCAG 2.2's A and AA criteria, and `withBestPractices()` adds the rules that name no WCAG criterion. `withTags()` and `withRules()` add to a target's rules, and the disable methods apply after. A version other than `'2.0'`, `'2.1'` or `'2.2'`, or a level other than `'A'`, `'AA'` or `'AAA'`, throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Each call replaces the previous target.
+- **`withWcag(version, level?)` / `withBestPractices()`** — select by conformance target, core 1.11's `runOnly.wcag`: `withWcag('2.2', 'AA')` runs the rules for WCAG 2.2's A and AA criteria, and `withBestPractices()` adds the rules that name no WCAG criterion. `withTags()` and `withRules()` add to a target's rules, and the disable methods apply after. The level is read in any case (`'aa'` is `'AA'`). A version other than `'2.0'`, `'2.1'` or `'2.2'`, or a level other than A, AA or AAA, throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Each call replaces the previous target.
 - **`includeMode(mode)`** — how `withTags()` and `withRules()` combine when both are given, core's `runOnly.includeMode`. `'and'`, the engine's default, runs only the rules that match both; `'or'` runs those that match either. It's what lets a scan say "this area, plus these checks". A team that owns a design system's form components, say, can run every rule about forms and the contrast check too, in one scan:
 
   ```js
@@ -19,13 +19,19 @@ Extracted once five real consumers existed and the duplication was actually cost
   ```
 
   Without `includeMode('or')`, those two lines run no rule at all, since `contrast-computable` isn't tagged `forms`, and a scan of no rules looks clean. The same goes for a WCAG level tag beside a best practice: `.withTags('wcag2a').withRules('region')` runs nothing, and with `'or'` runs the `wcag2a` rules plus `region`. The mode is sent only when set, and on its own, with no other selection, it changes nothing, as in core. Anything other than `'and'` or `'or'` throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Each call replaces the previous mode. A `withWcag()` target doesn't need it: its rules are always added to what tags and rules select.
-- **`wcagLevel(level)`** — the WCAG level of the criteria a scan reports, core's `engineOptions.wcagLevel` (the core release after 1.11.1). Criteria above it are left out of `rulesResults`, while every selected rule still runs and reports in `checksResults`. It's what lets a scan that names a few checks say it is meant as WCAG AA. A team that gates each pull request on colour contrast alone, say, runs one check, which covers both 1.4.3 (AA) and 1.4.6 (AAA):
+- **`wcagLevel(level)`** — the WCAG level of the criteria a scan *reports*, without changing which rules *run* (core's `engineOptions.wcagLevel`, core 1.12.0 and later). Use it when you select checks by rule id or tag but gate on a level. `contrast-computable` checks both 1.4.3 (AA) and 1.4.6 (AAA), so a contrast-only scan reports an AAA failure an AA site never aimed for, unless you say the level:
 
   ```js
-  builder.withRules('contrast-computable').wcagLevel('AA');
+  const results = await new A11yCoreBuilder({ page })
+    .withRules('contrast-computable')
+    .wcagLevel('AA')
+    .analyze();
+
+  results.rulesResults.map((r) => r.ruleId); // ['wcag-1.4.3-contrast-minimum'] -- no 1.4.6
+  results.engine.wcagLevel;                 // 'AA'
   ```
 
-  Without `wcagLevel('AA')`, that scan reports 1.4.6 as well, so a site that meets AA can show a failing AAA criterion it never aimed for. With it, the scan reports 1.4.3 alone, and `results.engine.wcagLevel` says `'AA'`. `withWcag()` targets already imply their level; `wcagLevel()` is for selections that don't, and wins when both are given. `'A'`, `'AA'` or `'AAA'` in any case is accepted and sent in capitals, and it wins over a level given through `options()`. Anything else throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, `null` clears it, and each call replaces the previous level.
+  The check itself still runs and reports in `checksResults`. A `withWcag()` target already implies its level, so you rarely need both; when you give both, `wcagLevel()` wins. The level is read in any case and sent in capitals, and wins over one given through `options()`. Anything other than A, AA or AAA throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` (the code core uses for the option) at the call; `null` clears it; each call replaces the previous level.
 - **`_normalizeCustomRule(rule)`** — the one real point of behavioral divergence across bindings, exposed as an overridable hook. The default (correct for Playwright/Puppeteer/Selenium/WebdriverIO) stringifies a live `runInPage`/`applicability` function via `toReconstructableSource()`, since those drivers cross a real serialization boundary (`page.evaluate()`/`executeScript()`/`browser.execute()`) that can't carry a live `Function` reference. Cypress overrides this to a no-op passthrough, since its test code shares a browser tab with the page it's scanning and needs no stringification.
 - **`canReconstructAsFunction`/`toReconstructableSource`** — the reconstruction-verification helpers `_normalizeCustomRule`'s default uses, exported separately in case a binding needs them directly.
 - **`formatFailures`** — turns a `checksResults` array into a short, human-readable failure block. Framework-agnostic, no assertion-library dependency.

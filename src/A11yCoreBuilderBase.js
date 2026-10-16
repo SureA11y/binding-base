@@ -22,6 +22,11 @@ function loadCorePack() {
 const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
 const WCAG_LEVELS = ['A', 'AA', 'AAA'];
 
+// Core reads a WCAG level in any case; the builder sends it in capitals.
+function normalizeLevel(level) {
+  return typeof level === 'string' ? level.trim().toUpperCase() : level;
+}
+
 // What surea11y's runOnly.includeMode accepts.
 const INCLUDE_MODES = ['and', 'or'];
 
@@ -148,18 +153,20 @@ class A11yCoreBuilderBase {
    * runs those of the version's criteria at that level and below
    * (surea11y's runOnly.wcag, @surea11y/core 1.11 and later). withTags()
    * and withRules() add to its rules; the disable methods apply after.
-   * Calling it again replaces the target.
+   * The level is read in any case and sent in capitals. Calling it again
+   * replaces the target.
    */
   withWcag(version, level = 'AA') {
     const v = typeof version === 'number' ? version.toFixed(1) : version;
-    if (!WCAG_VERSIONS.includes(v) || !WCAG_LEVELS.includes(level)) {
+    const l = normalizeLevel(level);
+    if (!WCAG_VERSIONS.includes(v) || !WCAG_LEVELS.includes(l)) {
       const err = new TypeError(
         `A11yCoreBuilder.withWcag(): expected a version (${WCAG_VERSIONS.join(', ')}) and a level (${WCAG_LEVELS.join(', ')}), not ${JSON.stringify(version)}, ${JSON.stringify(level)}.`
       );
       err.code = 'INVALID_RUN_ONLY';
       throw err;
     }
-    this._wcag = { version: v, level };
+    this._wcag = { version: v, level: l };
     return this;
   }
 
@@ -201,14 +208,14 @@ class A11yCoreBuilderBase {
    * at AAA, 1.4.6; with `.wcagLevel('AA')`, 1.4.3 alone. Any case is
    * accepted and sent in capitals; it wins over a wcagLevel given through
    * options(). Calling it again replaces the level, and null clears it.
-   * Needs the @surea11y/core release after 1.11.1.
+   * Needs @surea11y/core 1.12.0 or later.
    */
   wcagLevel(level) {
     if (level === null) {
       this._wcagLevel = null;
       return this;
     }
-    const upper = typeof level === 'string' ? level.toUpperCase() : level;
+    const upper = normalizeLevel(level);
     if (!WCAG_LEVELS.includes(upper)) {
       const err = new TypeError(`A11yCoreBuilder.wcagLevel(): expected a level (${WCAG_LEVELS.join(', ')}), or null, not ${level === undefined ? 'undefined' : JSON.stringify(level)}.`);
       err.code = 'INVALID_ENGINE_OPTIONS';

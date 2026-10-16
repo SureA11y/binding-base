@@ -253,7 +253,8 @@ test('core contract: a pack the page does not run is a pack-skipped gap, not a c
 test('core contract: withWcag() and withBestPractices() select what the engine runs', () => {
   const page = pageScan();
   try {
-    const target = page.scan(new A11yCoreBuilderBase().withWcag('2.2', 'AA'));
+    const target = page.scan(new A11yCoreBuilderBase().withWcag('2.2', 'aa'));
+    assert.strictEqual(target.engine.wcagLevel, 'AA', 'the level withWcag() gives is recorded');
     assert.strictEqual(target.engine.wcagVersion, '2.2');
     const ids = target.checksResults.map((r) => r.ruleId);
     assert.ok(ids.includes('img-alt-present'));
