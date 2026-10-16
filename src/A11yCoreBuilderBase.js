@@ -691,7 +691,8 @@ class A11yCoreBuilderBase {
    * holding that `<iframe>` (as `_evaluateInFrame()` takes it) and `iframe`
    * the `<iframe>` in it: a CSS selector, `{ selector, index }` (the index
    * among the elements `selector` matches, by default `'iframe, frame'`),
-   * or an element handle in that frame. `[]` (the default) for the
+   * or an element handle in that frame; null when the binding could not
+   * find it, which fails that frame's pictures. `[]` (the default) for the
    * top-level page, which must be the first frame a scan passes, since a
    * scan's `max` and file names count from it.
    *

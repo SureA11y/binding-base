@@ -114,7 +114,8 @@ export interface ScreenshotView {
  */
 export interface FramePathStep<Frame = unknown> {
   frame: Frame;
-  iframe: string | { selector?: string; index: number } | object;
+  /** null when the binding could not find it (a frame detached after its scan): that frame's pictures fail. */
+  iframe: string | { selector?: string; index: number } | object | null;
 }
 
 /** A pack from @surea11y/core/pack's definePack(): the fields withPacks() reads. */
