@@ -230,6 +230,148 @@ function checkFramePath(framePath) {
 
 let tokens = 0;
 
+/** A token naming one element's capture, for the in-page step's hold and release. */
+function screenshotToken() {
+  tokens += 1;
+  return `surea11y-${Date.now().toString(36)}-${tokens}`;
+}
+
+/**
+ * The space kept around the element in its picture, in CSS pixels: the
+ * padding asked for, and at least the room the highlight takes.
+ */
+function screenshotMargin(options) {
+  return Math.max(options.padding, options.highlight ? HIGHLIGHT_SPACE : 0);
+}
+
+// Runs one request of the in-page step through a binding's
+// evaluateInFrame(frame, fn, args), and checks what came back.
+function stepRunner(evaluateInFrame) {
+  return async (where, request, element) => {
+    const args = element === undefined ? [request] : [request, element];
+    const value = await evaluateInFrame(where, screenshotInPage, args);
+    if (value === null || value === undefined || typeof value !== 'object') {
+      if (request.op === 'release') return value;
+      throw new Error(`the page returned ${describe(value)} for the screenshot step "${request.op}"`);
+    }
+    return value;
+  };
+}
+
+/**
+ * The frame's name for file names: each <iframe> on the way, named in its
+ * parent as core names a frame element, outermost first; [] for the
+ * top-level page. Throws when an <iframe> is gone (null in the path).
+ * @param {{ evaluateInFrame: Function, framePath?: Array<object> }} opts
+ * @returns {Promise<string[]>}
+ */
+async function screenshotFrameKey({ evaluateInFrame, framePath = [] }) {
+  checkFramePath(framePath);
+  const evaluate = stepRunner(evaluateInFrame);
+  const key = [];
+  for (const step of framePath) {
+    // A binding that could not find the <iframe> (a frame detached after
+    // its scan) says so with null: nothing to ask its parent.
+    if (step.iframe === null) throw new Error('the <iframe> leading to the frame is gone');
+    const { iframe, element } = iframeArgs(step);
+    key.push((await evaluate(step.frame, { op: 'frame-key', iframe }, element)).key);
+  }
+  return key;
+}
+
+/**
+ * Gets one element ready for its picture: each <iframe> on the way into
+ * view, the element found, scrolled into view and highlighted, and where it
+ * shows on the top-level page worked out. Resolves to what to capture,
+ * `{ clip, view, box, cropped }`: `clip` the box to take, whole CSS pixels
+ * relative to the top-level viewport, `view` the top-level page's
+ * `{ devicePixelRatio, viewport, scroll }` (what `_captureBox()` is given),
+ * and `box` where the element will show in the picture. The page stays as
+ * it was left until releaseElementScreenshot() with the same token, which
+ * must follow. Or resolves to `{ skipped }` (and `error`), the page
+ * already put back. Never throws.
+ *
+ * For a binding that takes the picture itself between the two, as Cypress
+ * does through its own commands; _captureScreenshots() is built on them.
+ * @param {{ evaluateInFrame: Function, frame: *, framePath?: Array<object>,
+ *   element: { selector: string, shadowHostSelectors: (string[]|null) },
+ *   options: object, token: string }} opts `element` as planScreenshots()
+ *   lists it, `options` the builder's screenshots options, `token` from
+ *   screenshotToken()
+ */
+async function prepareElementScreenshot({ evaluateInFrame, frame, framePath = [], element, options, token }) {
+  const evaluate = stepRunner(evaluateInFrame);
+  const margin = screenshotMargin(options);
+  const done = (outcome) => releaseElementScreenshot({ evaluateInFrame, frame, framePath, token }).then(() => outcome);
+  try {
+    checkFramePath(framePath);
+    // Each <iframe> on the way into view, outermost first.
+    for (const step of framePath) {
+      if (step.iframe === null) throw new Error('the <iframe> leading to the frame is gone');
+      const { iframe, element: handle } = iframeArgs(step);
+      await evaluate(step.frame, { op: 'hold', token, iframe }, handle);
+    }
+
+    const target = await evaluate(frame, {
+      op: 'target',
+      token,
+      selector: element.selector,
+      shadowHostSelectors: element.shadowHostSelectors,
+      highlight: options.highlight,
+      margin
+    });
+    if (target.skipped) return done({ skipped: SCREENSHOT_SKIPS.includes(target.skipped) ? target.skipped : 'capture-failed' });
+
+    // Out to the top-level page, innermost frame first. What shows is what
+    // is inside every viewport on the way.
+    let rect = target.rect;
+    let shownRect = intersect(rect, target.viewport);
+    let shownPadded = intersect(expand(rect, margin), target.viewport);
+    let view = target;
+    for (let i = framePath.length - 1; i >= 0; i--) {
+      const { iframe, element: handle } = iframeArgs(framePath[i]);
+      const at = await evaluate(framePath[i].frame, { op: 'reveal', token, iframe, rect, margin }, handle);
+      rect = place(rect, at);
+      shownRect = intersect(place(shownRect, at), at.viewport);
+      shownPadded = intersect(place(shownPadded, at), at.viewport);
+      view = at;
+    }
+    if (!shownRect) return done({ skipped: 'off-screen' });
+
+    const clip = intersect(wholePixels(shownPadded), view.viewport);
+    const inImage = intersect(shownRect, clip) || shownRect;
+    return {
+      clip,
+      view: { devicePixelRatio: view.devicePixelRatio, viewport: { ...view.window }, scroll: { ...view.scroll } },
+      box: {
+        x: round2(inImage.x - clip.x),
+        y: round2(inImage.y - clip.y),
+        width: round2(inImage.width),
+        height: round2(inImage.height)
+      },
+      cropped: shownRect.width * shownRect.height < rect.width * rect.height - 0.01
+    };
+  } catch (e) {
+    return done({ skipped: 'capture-failed', error: errorMessage(e) });
+  }
+}
+
+/**
+ * Puts the page back after prepareElementScreenshot() with the same token:
+ * the overlay removed and every scroll position restored, in the scanned
+ * frame first, then each <iframe>'s parent, innermost first. A frame where
+ * nothing was held is left alone. Never throws.
+ * @param {{ evaluateInFrame: Function, frame: *, framePath?: Array<object>, token: string }} opts
+ */
+async function releaseElementScreenshot({ evaluateInFrame, frame, framePath = [], token }) {
+  const evaluate = stepRunner(evaluateInFrame);
+  await evaluate(frame, { op: 'release', token }).catch(() => {});
+  const steps = Array.isArray(framePath) ? framePath : [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i] && 'frame' in steps[i]) await evaluate(steps[i].frame, { op: 'release', token }).catch(() => {});
+  }
+}
+
 /**
  * The shared step a binding's analyze() calls once per scanned frame, after
  * the scan and before reportOnly(): pictures the elements the result
@@ -245,27 +387,12 @@ async function captureScreenshots(builder, result, frame, framePath) {
   // `max` and the file names count from there.
   if (!framePath.length || !builder._screenshotScan) builder._screenshotScan = { taken: 0, names: new Map(), dirReady: null };
   const scan = builder._screenshotScan;
+  const evaluateInFrame = (where, fn, args) => builder._evaluateInFrame(where, fn, args);
 
-  const evaluate = async (where, request, element) => {
-    const args = element === undefined ? [request] : [request, element];
-    const value = await builder._evaluateInFrame(where, screenshotInPage, args);
-    if (value === null || value === undefined || typeof value !== 'object') {
-      if (request.op === 'release') return value;
-      throw new Error(`the page returned ${describe(value)} for the screenshot step "${request.op}"`);
-    }
-    return value;
-  };
-
-  let frameKey = [];
+  let frameKey;
   let frameError = null;
   try {
-    for (const step of framePath) {
-      // A binding that could not find the <iframe> (a frame detached after
-      // its scan) says so with null: nothing to ask its parent.
-      if (step.iframe === null) throw new Error('the <iframe> leading to the frame is gone');
-      const { iframe, element } = iframeArgs(step);
-      frameKey.push((await evaluate(step.frame, { op: 'frame-key', iframe }, element)).key);
-    }
+    frameKey = await screenshotFrameKey({ evaluateInFrame, framePath });
   } catch (e) {
     frameError = errorMessage(e);
     frameKey = framePath.map((_, i) => `frame-${i}`);
@@ -274,7 +401,6 @@ async function captureScreenshots(builder, result, frame, framePath) {
   const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey });
   for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
 
-  const margin = Math.max(options.padding, options.highlight ? HIGHLIGHT_SPACE : 0);
   for (const element of elements) {
     let screenshot;
     if (frameError) {
@@ -289,78 +415,27 @@ async function captureScreenshots(builder, result, frame, framePath) {
   return result;
 
   async function captureElement(element) {
-    const token = `surea11y-${Date.now().toString(36)}-${(tokens += 1)}`;
-    const held = [];
-    let targeted = false;
-    let shot;
+    const token = screenshotToken();
+    const ready = await prepareElementScreenshot({ evaluateInFrame, frame, framePath, element, options, token });
+    if (ready.skipped) return ready;
+    let image;
     try {
-      // Each <iframe> on the way into view, outermost first.
-      for (const step of framePath) {
-        const { iframe, element: handle } = iframeArgs(step);
-        held.push(step);
-        await evaluate(step.frame, { op: 'hold', token, iframe }, handle);
-      }
-
-      targeted = true;
-      const target = await evaluate(frame, {
-        op: 'target',
-        token,
-        selector: element.selector,
-        shadowHostSelectors: element.shadowHostSelectors,
-        highlight: options.highlight,
-        margin
-      });
-      if (target.skipped) return { skipped: SCREENSHOT_SKIPS.includes(target.skipped) ? target.skipped : 'capture-failed' };
-
-      // Out to the top-level page, innermost frame first. What shows is
-      // what is inside every viewport on the way.
-      let rect = target.rect;
-      let shownRect = intersect(rect, target.viewport);
-      let shownPadded = intersect(expand(rect, margin), target.viewport);
-      let view = target;
-      for (let i = framePath.length - 1; i >= 0; i--) {
-        const { iframe, element: handle } = iframeArgs(framePath[i]);
-        const at = await evaluate(framePath[i].frame, { op: 'reveal', token, iframe, rect, margin }, handle);
-        rect = place(rect, at);
-        shownRect = intersect(place(shownRect, at), at.viewport);
-        shownPadded = intersect(place(shownPadded, at), at.viewport);
-        view = at;
-      }
-      if (!shownRect) return { skipped: 'off-screen' };
-
-      const clip = intersect(wholePixels(shownPadded), view.viewport);
-      const image = toPng(await builder._captureBox(clip, {
-        devicePixelRatio: view.devicePixelRatio,
-        viewport: { ...view.window },
-        scroll: { ...view.scroll }
-      }));
-
-      const inImage = intersect(shownRect, clip) || shownRect;
-      const box = {
-        x: round2(inImage.x - clip.x),
-        y: round2(inImage.y - clip.y),
-        width: round2(inImage.width),
-        height: round2(inImage.height)
-      };
-      shot = { image, box, cropped: shownRect.width * shownRect.height < rect.width * rect.height - 0.01 };
+      image = toPng(await builder._captureBox(ready.clip, ready.view));
     } catch (e) {
       return { skipped: 'capture-failed', error: errorMessage(e) };
     } finally {
-      // The page as it was, also when a step failed: the scanned frame
-      // first, then each <iframe>'s parent, innermost first.
-      if (targeted) await evaluate(frame, { op: 'release', token }).catch(() => {});
-      for (let i = held.length - 1; i >= 0; i--) await evaluate(held[i].frame, { op: 'release', token }).catch(() => {});
+      await releaseElementScreenshot({ evaluateInFrame, frame, framePath, token });
     }
 
     let out;
     try {
-      out = options.dir ? { path: await writeImage(element, shot.image) } : { buffer: shot.image };
+      out = options.dir ? { path: await writeImage(element, image) } : { buffer: image };
     } catch (e) {
       return { skipped: 'capture-failed', error: errorMessage(e) };
     }
     scan.taken += 1;
-    out.box = shot.box;
-    if (shot.cropped) out.cropped = true;
+    out.box = ready.box;
+    if (ready.cropped) out.cropped = true;
     return out;
   }
 
@@ -388,6 +463,11 @@ module.exports = {
   normalizeScreenshotOptions,
   planScreenshots,
   screenshotFileName,
+  screenshotFrameKey,
+  screenshotToken,
+  screenshotMargin,
+  prepareElementScreenshot,
+  releaseElementScreenshot,
   captureScreenshots,
   fnv1a
 };

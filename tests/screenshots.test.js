@@ -13,6 +13,10 @@ const {
   planScreenshots,
   screenshotFileName,
   screenshotInPage,
+  screenshotFrameKey,
+  screenshotToken,
+  prepareElementScreenshot,
+  releaseElementScreenshot,
   formatFailures
 } = require('../src/index.js');
 const { fnv1a } = require('../src/screenshots.js');
@@ -447,4 +451,64 @@ test('_captureScreenshots(): a file it cannot write is a failed capture', async 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- The pieces, as a binding that takes the picture itself uses them -----
+//
+// Cypress runs in the page's own browser: its evaluateInFrame runs the step
+// in the window itself, and it takes the picture with its own command
+// between prepare and release.
+
+const inWindow = (win, fn, args) => win.eval('(' + fn.toString() + ')')(...args);
+const held = (win) => Object.getOwnPropertySymbols(win).includes(Symbol.for('surea11y.screenshots'));
+
+test('prepareElementScreenshot(): holds the page and says what to capture; releaseElementScreenshot() puts it back', async () => {
+  const win = layoutWindow(PAGE);
+  win.scrollTo(0, 37);
+  const options = { ...SCREENSHOT_DEFAULTS, padding: 10 };
+  const token = screenshotToken();
+  const ready = await prepareElementScreenshot({ evaluateInFrame: inWindow, frame: win, element: { selector: '#far', shadowHostSelectors: null }, options, token });
+
+  // #far (10, 2000, 80x40) centered, with 10px around it.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ready)), {
+    clip: { x: 0, y: 270, width: 100, height: 60 },
+    view: { devicePixelRatio: 1, viewport: { width: 800, height: 600 }, scroll: { x: 0, y: 1720 } },
+    box: { x: 10, y: 10, width: 80, height: 40 },
+    cropped: false
+  });
+  assert.strictEqual(win.document.querySelectorAll('surea11y-highlight').length, 1, 'the highlight is up while the picture is taken');
+  assert.ok(held(win));
+
+  await releaseElementScreenshot({ evaluateInFrame: inWindow, frame: win, token });
+  assert.strictEqual(win.document.querySelectorAll('surea11y-highlight').length, 0);
+  assert.deepStrictEqual([win.scrollX, win.scrollY], [0, 37]);
+  assert.ok(!held(win));
+});
+
+test('prepareElementScreenshot(): a skip leaves the page as it was, with nothing to release', async () => {
+  const win = layoutWindow(PAGE);
+  win.scrollTo(0, 37);
+  for (const [selector, skipped] of [['#missing', 'no-element'], ['#unlaid', 'not-rendered'], ['#away', 'off-screen'], ['body', 'page-level']]) {
+    const ready = await prepareElementScreenshot({ evaluateInFrame: inWindow, frame: win, element: { selector, shadowHostSelectors: null }, options: SCREENSHOT_DEFAULTS, token: screenshotToken() });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(ready)), { skipped }, selector);
+    assert.strictEqual(win.document.querySelectorAll('surea11y-highlight').length, 0, selector);
+    assert.deepStrictEqual([win.scrollY, held(win)], [37, false], selector);
+  }
+  const broken = await prepareElementScreenshot({ evaluateInFrame: () => { throw new Error('detached'); }, frame: win, element: { selector: '#near', shadowHostSelectors: null }, options: SCREENSHOT_DEFAULTS, token: screenshotToken() });
+  assert.deepStrictEqual(broken, { skipped: 'capture-failed', error: 'detached' });
+});
+
+test('screenshotFrameKey() and prepareElementScreenshot(): a frame is named and placed on the top-level page', async () => {
+  const top = layoutWindow(PAGE);
+  const child = layoutWindow(PAGE, { width: 400, height: 300 });
+  const framePath = [{ frame: top, iframe: top.document.getElementById('frame') }];
+  assert.deepStrictEqual(await screenshotFrameKey({ evaluateInFrame: inWindow, framePath }), ['#frame']);
+  assert.deepStrictEqual(await screenshotFrameKey({ evaluateInFrame: inWindow }), []);
+  await assert.rejects(screenshotFrameKey({ evaluateInFrame: inWindow, framePath: [{ frame: top, iframe: null }] }), /the <iframe> leading to the frame is gone/);
+
+  const token = screenshotToken();
+  const ready = await prepareElementScreenshot({ evaluateInFrame: inWindow, frame: child, framePath, element: { selector: '#near', shadowHostSelectors: null }, options: { ...SCREENSHOT_DEFAULTS, highlight: false }, token });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ready.clip)), { x: 110, y: 70, width: 100, height: 50 });
+  await releaseElementScreenshot({ evaluateInFrame: inWindow, frame: child, framePath, token });
+  assert.ok(!held(top) && !held(child));
 });

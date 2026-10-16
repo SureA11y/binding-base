@@ -282,7 +282,15 @@ Per driver. The Puppeteer, Playwright and Selenium rows were checked against rea
 
 A driver that switches frames is left in whichever frame the step used last, the top-level page in a frame scan: switch back if the traversal goes on from the scanned frame. **`cropViewportScreenshot(image, box, view)`** cuts the box out of a whole-viewport screenshot in Node, with no image library and nothing from the page, scaling CSS pixels by the image's width over the viewport's.
 
-Cypress's `analyze()` returns a chainable and its specs run in the browser, so its builder overrides `_captureScreenshots()` and runs the same plan through its own commands: **`planScreenshots(result, { outcomes, frameKey })`** lists the elements to picture, grouped as the shared step groups them, with their file names (**`screenshotFileName()`**); **`screenshotInPage`** is the in-page step, for `win.eval('(' + screenshotInPage + ')')`; and `cy.screenshot()` takes the picture where Cypress keeps its own. `SCREENSHOT_SKIPS` lists the reasons a `screenshot` can give.
+Cypress's `analyze()` returns a chainable and its specs run in the browser, so its picture is a queued `cy.screenshot()` command that no Promise can wait for. Its builder overrides `_captureScreenshots()` and runs the same steps around its own command, with the pieces `_captureScreenshots()` itself is built from:
+
+- **`screenshotFrameKey({ evaluateInFrame, framePath })`** names the frame for file names;
+- **`planScreenshots(result, { outcomes, frameKey })`** lists the elements to picture, grouped as the shared step groups them, with their file names (**`screenshotFileName()`**);
+- **`prepareElementScreenshot({ evaluateInFrame, frame, framePath, element, options, token })`** gets one element ready and resolves to `{ clip, view, box, cropped }`, the page held: the binding then takes `clip` its own way;
+- **`releaseElementScreenshot({ evaluateInFrame, frame, framePath, token })`** puts the page back, and must follow a prepare that didn't skip; a prepare that resolves to `{ skipped }` has put it back already;
+- **`screenshotToken()`** names one element's capture for the two.
+
+`evaluateInFrame(frame, fn, args)` is what `_evaluateInFrame()` is; in Cypress, which runs in the page's own browser, `win.eval('(' + fn + ')')(...args)`, and **`screenshotInPage`** is that `fn`. `SCREENSHOT_SKIPS` lists the reasons a `screenshot` can give.
 
 A binding that implements neither (an older one) throws an error naming the two methods when `.screenshots()` is called, so it never silently takes no pictures.
 

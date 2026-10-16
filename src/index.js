@@ -7,7 +7,16 @@ const { formatFailures } = require('./formatFailures');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { queryOccurrenceElement, formatOccurrenceLocation } = require('./shadowDom');
-const { SCREENSHOT_DEFAULTS, SCREENSHOT_SKIPS, planScreenshots, screenshotFileName } = require('./screenshots');
+const {
+  SCREENSHOT_DEFAULTS,
+  SCREENSHOT_SKIPS,
+  planScreenshots,
+  screenshotFileName,
+  screenshotFrameKey,
+  screenshotToken,
+  prepareElementScreenshot,
+  releaseElementScreenshot
+} = require('./screenshots');
 const { screenshotInPage } = require('./screenshotsInPage');
 const { cropViewportScreenshot } = require('./png');
 
@@ -30,6 +39,10 @@ module.exports = {
   SCREENSHOT_SKIPS,
   planScreenshots,
   screenshotFileName,
+  screenshotFrameKey,
+  screenshotToken,
+  prepareElementScreenshot,
+  releaseElementScreenshot,
   screenshotInPage,
   cropViewportScreenshot
 };
