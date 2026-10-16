@@ -4,7 +4,7 @@ Shared, driver-agnostic scaffolding for [`@surea11y/core`](https://github.com/Su
 
 > **Looking to check accessibility?** Install the package for your tool instead: [`@surea11y/playwright`](https://github.com/SureA11y/playwright), [`@surea11y/puppeteer`](https://github.com/SureA11y/puppeteer), [`@surea11y/selenium`](https://github.com/SureA11y/selenium), [`@surea11y/webdriverio`](https://github.com/SureA11y/webdriverio) or [`@surea11y/cypress`](https://github.com/SureA11y/cypress) for browser tests, [`@surea11y/test-matchers`](https://github.com/SureA11y/test-matchers) for Jest or Vitest component tests, or [`@surea11y/cli`](https://github.com/SureA11y/cli) for the terminal or CI. None of them needs this package installed separately.
 
-**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, notes on forced colors and the internals hook, and `plannedChecks()`/`plannedCriteria()`, the list of what a scan will check before it runs.
+**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, notes on forced colors and the internals hook, and `plannedChecks()`/`plannedCriteria()`, the list of what a scan will check before it runs; and, since 1.5.0, `.screenshots()`, a picture of each element a scan flags, with what a binding needs to take them.
 
 Extracted once five real consumers existed and the duplication was actually costing something — each binding carried the same logic in parallel, and keeping it in sync by hand across five packages was no longer worth the cost once there were that many consumers to justify a shared package.
 
@@ -178,7 +178,7 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 ```json
 {
   "dependencies": {
-    "@surea11y/binding-base": "^1.4.0"
+    "@surea11y/binding-base": "^1.5.0"
   }
 }
 ```
@@ -296,7 +296,7 @@ A binding that implements neither (an older one) throws an error naming the two 
 
 ## Proposals
 
-- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — the design of `.screenshots()`, built in this package for 1.5.0: what each binding adds, and what was decided and why.
+- [`docs/ELEMENT_SCREENSHOTS.md`](./docs/ELEMENT_SCREENSHOTS.md) — the design of `.screenshots()`, in this package since 1.5.0: what each binding adds, and what was decided and why.
 
 ## Testing
 

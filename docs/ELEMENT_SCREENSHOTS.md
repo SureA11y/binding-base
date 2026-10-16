@@ -1,6 +1,6 @@
 # Screenshots of failing elements
 
-A picture of each element a scan flags, beside its finding. The shared part is built in `@surea11y/binding-base` for 1.5.0 (see the [README](../README.md#screenshots-of-failing-elements)); each binding adds two small driver methods next (Cypress, one step of its own), and core needs nothing. This file records what the feature needs, which project each part belongs in, and the decisions taken (see [Decisions](#decisions)), including those taken while building it.
+A picture of each element a scan flags, beside its finding. The shared part is in `@surea11y/binding-base` 1.5.0 (see the [README](../README.md#screenshots-of-failing-elements)); each binding adds two small driver methods (Cypress, one step of its own, built from the exported steps), and core needs nothing. This file records what the feature needs, which project each part belongs in, and the decisions taken (see [Decisions](#decisions)), including those taken while building it.
 
 ## Why core does not take the screenshot
 
