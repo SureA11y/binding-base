@@ -338,3 +338,39 @@ test('core contract: strictOptions rejects a misspelt option with INVALID_ENGINE
     page.close();
   }
 });
+
+// --- 1.12: what a scan will check, before it runs -----------------------------------
+
+test('core contract: plannedChecks() and plannedCriteria() list what a real scan with the same builder reports', () => {
+  const ids = (list, key) => list.map((e) => e[key]).sort();
+  const cases = [
+    ['a WCAG target', () => new A11yCoreBuilderBase().withWcag('2.2', 'AA')],
+    ['rule ids at a level', () => new A11yCoreBuilderBase().withRules(['contrast-computable', 'img-alt-present']).wcagLevel('AA')],
+    ['a custom rule', () => new A11yCoreBuilderBase().withWcag('2.1', 'A').includeMode('or').withRules('org-h1').withCustomRules({
+      id: 'org-h1',
+      meta: { title: 'One h1', tags: ['wcag2a', 'wcag131'] },
+      runInPage: (ctx) => ({ outcome: ctx.document.querySelectorAll('h1').length === 1 ? 'pass' : 'fail', occurrences: [] })
+    })],
+    ['a pack', () => new A11yCoreBuilderBase().withPacks(city).options({ profile: 'city-2026' })]
+  ];
+  for (const [name, make] of cases) {
+    const builder = make();
+    const page = builder._packs.length ? packPage(builder) : pageScan();
+    try {
+      const result = quietly(() => page.scan(builder));
+      assert.ok(result.checksResults.length, `${name}: the scan ran rules`);
+      if (name === 'a custom rule') assert.ok(builder.plannedChecks().some((c) => c.ruleId === 'org-h1'), 'the custom rule is planned');
+      if (name === 'a pack') assert.ok(builder.plannedCriteria().some((r) => r.id === 'city-images'), "the pack's rollup is planned");
+      assert.deepStrictEqual(ids(builder.plannedChecks(), 'ruleId'), ids(result.checksResults, 'ruleId'), `${name}: checks`);
+      assert.deepStrictEqual(ids(builder.plannedCriteria(), 'id'), ids(result.rulesResults, 'ruleId'), `${name}: criteria`);
+    } finally {
+      page.close();
+    }
+  }
+});
+
+test('core contract: plannedCriteria() follows wcagLevel(): no AAA criterion for a contrast check at AA', () => {
+  const builder = new A11yCoreBuilderBase().withRules('contrast-computable');
+  assert.deepStrictEqual(builder.plannedCriteria().map((r) => r.id), ['wcag-1.4.3-contrast-minimum', 'wcag-1.4.6-contrast-enhanced']);
+  assert.deepStrictEqual(builder.wcagLevel('AA').plannedCriteria().map((r) => r.id), ['wcag-1.4.3-contrast-minimum']);
+});

@@ -19,6 +19,25 @@ function loadCorePack() {
   return module.require(CORE_PACK);
 }
 
+// The catalog functions plannedChecks()/plannedCriteria() call, loaded the
+// same way, so a bundle for the browser doesn't take in the whole engine.
+const CORE = '@surea11y/core';
+function loadCoreCatalog(method) {
+  let core;
+  try {
+    if (typeof module !== 'object' || !module || typeof module.require !== 'function') {
+      throw new Error('the catalog is read in Node');
+    }
+    core = module.require(CORE);
+  } catch (err) {
+    throw new Error(`A11yCoreBuilder.${method}(): needs @surea11y/core 1.12.0 or later, installed beside the binding, in Node.`, { cause: err });
+  }
+  if (typeof core.getRulesForRunOnly !== 'function' || typeof core.getChecksForRunOnly !== 'function') {
+    throw new Error(`A11yCoreBuilder.${method}(): needs @surea11y/core 1.12.0 or later; the installed core has no getRulesForRunOnly().`);
+  }
+  return core;
+}
+
 // What surea11y's runOnly.wcag accepts.
 const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
 const WCAG_LEVELS = ['A', 'AA', 'AAA'];
@@ -525,6 +544,46 @@ class A11yCoreBuilderBase {
       : null;
 
     return { contextSelector, engineOptions, runOnly };
+  }
+
+  /**
+   * The rules a scan with this builder will run, as core's
+   * getChecksForRunOnly() lists them (catalog entries with `ruleId`, `title`,
+   * `tags`...), worked out from the same selection and options analyze()
+   * sends, packs and custom rules included. Synchronous, in Node, with no
+   * page: for recording what a scan covers, or checking a selection picked
+   * what was meant before running it. Needs @surea11y/core 1.12.0 or later.
+   * @returns {object[]}
+   */
+  plannedChecks() {
+    const { runOnly, engineOptions } = this._plannedArgs();
+    return loadCoreCatalog('plannedChecks').getChecksForRunOnly(runOnly, engineOptions);
+  }
+
+  /**
+   * The criteria a scan with this builder will report in `rulesResults`
+   * (WCAG criteria and standards' requirements), as core's
+   * getRulesForRunOnly() lists them (catalog entries with `id`, `title`,
+   * `criteria`...), following wcagLevel() and the WCAG version as the scan
+   * does. Same conditions as plannedChecks().
+   * @returns {object[]}
+   */
+  plannedCriteria() {
+    const { runOnly, engineOptions } = this._plannedArgs();
+    return loadCoreCatalog('plannedCriteria').getRulesForRunOnly(runOnly, engineOptions);
+  }
+
+  /**
+   * _buildEngineArgs() as the catalog functions take it: in Node, packs are
+   * passed as the pack objects themselves, where the page gets their names.
+   */
+  _plannedArgs() {
+    const { runOnly, engineOptions } = this._buildEngineArgs();
+    if (this._packs.length) {
+      const existing = Array.isArray(this._engineOptions.packs) ? this._engineOptions.packs : [];
+      engineOptions.packs = existing.concat(this._packs);
+    }
+    return { runOnly, engineOptions };
   }
 
   /** Filters a single native result object's checksResults per .reportOnly(), if set. */
