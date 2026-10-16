@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 const core = require('@surea11y/core');
-const { A11yCoreBuilderBase, formatFailures, getScanGaps } = require('../src/index.js');
+const { A11yCoreBuilderBase, formatFailures, getScanGaps, getScanNotes } = require('../src/index.js');
 
 const PAGE = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"></main></body></html>';
 
@@ -117,6 +117,28 @@ test('core contract: a custom rule disableRules() leaves out is listed as exclud
     assert.doesNotMatch(formatFailures(result), /did not run|in what was scanned/);
   } finally {
     page.close();
+  }
+});
+
+test('core contract: getScanNotes() advises the internals hook where a real scan asked about private internals, and not once it ran', () => {
+  const html = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><x-check role="checkbox"></x-check></main></body></html>';
+  const component = "customElements.define('x-check', class extends HTMLElement { #i; constructor() { super(); this.#i = this.attachInternals(); this.#i.ariaLabel = 'Subscribe'; this.#i.ariaChecked = 'false'; } });";
+  for (const hook of [false, true]) {
+    const page = pageScan(html);
+    try {
+      if (hook) page.window.eval(core.internalsHookScript());
+      page.window.eval(component);
+      const result = page.scan(new A11yCoreBuilderBase());
+      const notes = getScanNotes(result);
+      if (hook) {
+        assert.strictEqual(result.engine.environment.internalsHook, 'early');
+        assert.deepStrictEqual(notes, []);
+      } else {
+        assert.deepStrictEqual(notes.map((n) => [n.kind, n.hook, n.elementCount]), [['internals-hook', 'none', 1]]);
+      }
+    } finally {
+      page.close();
+    }
   }
 });
 

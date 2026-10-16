@@ -2,6 +2,7 @@
 
 const { formatOccurrenceLocation } = require('./shadowDom');
 const { getScanGaps } = require('./scanGaps');
+const { getScanNotes } = require('./scanNotes');
 
 const NO_FINDINGS = 'No accessibility violations found.';
 const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was scanned.';
@@ -30,7 +31,8 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  * Given a whole scan result rather than its checksResults, it also says
  * what the scan left out (getScanGaps(): a scope that matched nothing,
  * custom rules that did not run), so such a scan does not read as clean,
- * and ends with the @surea11y/core release that produced the result
+ * then its notes (getScanNotes(): forced colors, custom elements the
+ * internals hook would have let the engine read), and ends with the @surea11y/core release that produced the result
  * (`engine.version`, 1.10.0 and later) for a bug report to quote.
  *
  * @param {object|Array<object>} input one scan result, or its checksResults
@@ -60,6 +62,8 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'] } = {}) {
   else if (!gaps.length) blocks.push(NO_FINDINGS);
   else if (!gaps.some((g) => g.kind === 'context-not-found')) blocks.push(NO_FINDINGS_IN_SCANNED);
   if (gaps.length) blocks.push(gaps.map((g) => g.message).join('\n'));
+  const notes = getScanNotes(input);
+  if (notes.length) blocks.push(notes.map((n) => n.message).join('\n'));
   const version = input.engine && typeof input.engine.version === 'string' ? input.engine.version : null;
   if (version) blocks.push(`Scanned with @surea11y/core ${version}.`);
   return blocks.join('\n\n');

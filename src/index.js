@@ -5,6 +5,7 @@ const { canReconstructAsFunction, toReconstructableSource } = require('./customR
 const { ENGINE_ERROR_CODES, ENGINE_ERROR_KEY, EngineError, createInPageScan, rethrowEngineError } = require('./engineErrors');
 const { formatFailures } = require('./formatFailures');
 const { getScanGaps } = require('./scanGaps');
+const { getScanNotes } = require('./scanNotes');
 const { queryOccurrenceElement, formatOccurrenceLocation } = require('./shadowDom');
 
 module.exports = {
@@ -19,6 +20,7 @@ module.exports = {
   rethrowEngineError,
   formatFailures,
   getScanGaps,
+  getScanNotes,
   queryOccurrenceElement,
   formatOccurrenceLocation
 };
