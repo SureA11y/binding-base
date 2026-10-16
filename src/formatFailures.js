@@ -32,8 +32,9 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  * what the scan left out (getScanGaps(): a scope that matched nothing,
  * custom rules that did not run), so such a scan does not read as clean,
  * then its notes (getScanNotes(): forced colors, custom elements the
- * internals hook would have let the engine read), and ends with the @surea11y/core release that produced the result
- * (`engine.version`, 1.10.0 and later) for a bug report to quote.
+ * internals hook would have let the engine read), and ends with the
+ * @surea11y/core release that produced the result (`engine.version`,
+ * 1.10.0 and later) for a bug report to quote.
  *
  * @param {object|Array<object>} input one scan result, or its checksResults
  *   array (or any subset of it, e.g. already passed through .reportOnly())

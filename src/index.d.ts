@@ -28,8 +28,8 @@ export interface EngineArgs {
 
 export type WcagVersion = '2.0' | '2.1' | '2.2';
 export type WcagLevel = 'A' | 'AA' | 'AAA';
-/** A level as withWcag() and wcagLevel() take it: in any case, as core reads it. */
-export type WcagLevelInput = WcagLevel | Lowercase<WcagLevel> | 'Aa' | 'Aaa';
+/** A level as withWcag() and wcagLevel() take it: in capitals or lower case (any case is accepted at run time, as core reads it). */
+export type WcagLevelInput = WcagLevel | Lowercase<WcagLevel>;
 export type IncludeMode = 'and' | 'or';
 
 /** A catalog entry of a rule a scan will run (core's CheckCatalogEntry has more). */
