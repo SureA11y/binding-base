@@ -1,5 +1,14 @@
 'use strict';
 
+// The reason @surea11y/core gives a custom rule the selection's excludes
+// left out. 1.12.0 also marks such an entry `excluded: true`; a core between
+// the two gave the reason alone.
+const EXCLUDED_REASON = 'excluded by the selection.';
+
+function isExcluded(rule) {
+  return !!rule && (rule.excluded === true || rule.reason === EXCLUDED_REASON);
+}
+
 function quoteList(values) {
   return values.map((v) => JSON.stringify(String(v))).join(', ');
 }
@@ -14,7 +23,9 @@ function quoteList(values) {
  * - `context-partly-not-found`: some of several include() selectors matched
  *   nothing; the others were scanned.
  * - `custom-rule-skipped`: a custom rule (withCustomRules()) did not run,
- *   one gap per rule, with the engine's reason.
+ *   one gap per rule, with the engine's reason. A rule the caller excluded
+ *   (disableRules(), disableTags()), which core lists with `excluded: true`,
+ *   is left out: nothing the caller asked for was skipped.
  * - `pack-skipped`: a pack (withPacks(), @surea11y/core 1.11 and later) did
  *   not run, one gap per pack, with the engine's reason.
  *
@@ -51,6 +62,7 @@ function getScanGaps(result) {
 
   const skipped = Array.isArray(result.skippedCustomRules) ? result.skippedCustomRules : [];
   for (const rule of skipped) {
+    if (isExcluded(rule)) continue;
     const id = rule && typeof rule.id === 'string' && rule.id ? rule.id : null;
     const reason = rule && rule.reason ? String(rule.reason) : 'no reason given';
     gaps.push({
