@@ -179,9 +179,14 @@ Anything that actually touches a driver: the constructor's driver-handle validat
 {
   "dependencies": {
     "@surea11y/binding-base": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@surea11y/core": ">=1.12.0"
   }
 }
 ```
+
+The binding takes `@surea11y/core` as a peer, so a project installs both (`npm install @surea11y/core @surea11y/playwright`) and the binding runs the project's own copy of the engine.
 
 ```js
 const { runa11yCoreInPage } = require('@surea11y/core');
