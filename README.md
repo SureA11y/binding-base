@@ -2,7 +2,7 @@
 
 Shared, driver-agnostic scaffolding for [`@surea11y/core`](https://github.com/SureA11y/core)'s framework bindings — `@surea11y/playwright`, `@surea11y/puppeteer`, `@surea11y/selenium`, `@surea11y/webdriverio`, and `@surea11y/cypress`.
 
-> **Looking to check accessibility?** Install the package for your tool instead: [`@surea11y/playwright`](https://github.com/SureA11y/playwright), [`@surea11y/puppeteer`](https://github.com/SureA11y/puppeteer), [`@surea11y/selenium`](https://github.com/SureA11y/selenium), [`@surea11y/webdriverio`](https://github.com/SureA11y/webdriverio) or [`@surea11y/cypress`](https://github.com/SureA11y/cypress) for browser tests, [`@surea11y/test-matchers`](https://github.com/SureA11y/test-matchers) for Jest or Vitest component tests, or [`@surea11y/cli`](https://github.com/SureA11y/cli) for the terminal or CI. None of them needs this package installed separately.
+> **Looking to check accessibility?** Install `@surea11y/core` with the package for your tool instead: [`@surea11y/playwright`](https://github.com/SureA11y/playwright), [`@surea11y/puppeteer`](https://github.com/SureA11y/puppeteer), [`@surea11y/selenium`](https://github.com/SureA11y/selenium), [`@surea11y/webdriverio`](https://github.com/SureA11y/webdriverio) or [`@surea11y/cypress`](https://github.com/SureA11y/cypress) for browser tests, [`@surea11y/test-matchers`](https://github.com/SureA11y/test-matchers) for Jest or Vitest component tests. For the terminal or CI, install [`@surea11y/cli`](https://github.com/SureA11y/cli) on its own; it brings core with it. None of them needs this package installed separately.
 
 **Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, notes on forced colors and the internals hook, and `plannedChecks()`/`plannedCriteria()`, the list of what a scan will check before it runs; and, since 1.5.0, `.screenshots()`, a picture of each element a scan flags, with what a binding needs to take them.
 
@@ -182,6 +182,8 @@ Anything that actually touches a driver: the constructor's driver-handle validat
   }
 }
 ```
+
+A project installs core beside the binding (`npm install @surea11y/core @surea11y/playwright`), so the binding and the project share one copy of the engine. The bindings list core under `dependencies` through 1.x and move it to `peerDependencies` in 2.0.
 
 ```js
 const { runa11yCoreInPage } = require('@surea11y/core');
