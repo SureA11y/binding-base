@@ -150,6 +150,12 @@ export class A11yCoreBuilderBase {
   elementRef(enabled?: boolean): this;
   /** A picture of each element the scan flags, on its occurrences' `screenshot` field; `false` turns them off. Throws a TypeError with code INVALID_ENGINE_OPTIONS for an option it can't use. */
   screenshots(options?: ScreenshotOptions | boolean): this;
+  /**
+   * Fetch, from Node, the style sheets the page can't read (another origin's)
+   * and give core their text (engineOptions.styleSheetTexts). On by default;
+   * needs @surea11y/core 1.14.0 or later.
+   */
+  fetchStyleSheets(enabled?: boolean): this;
   frames(enabled?: boolean): this;
   /** The rules a scan with this builder will run, from core's getChecksForRunOnly(); in Node, no page needed (@surea11y/core 1.12.0 and later). */
   plannedChecks(): PlannedCheck[];
@@ -337,3 +343,11 @@ export function cropViewportScreenshot(
   box: ScreenshotBox,
   view?: Partial<Pick<ScreenshotView, 'devicePixelRatio' | 'viewport'>>
 ): ScreenshotBuffer;
+
+/** In the page: the URLs of the style sheets it can't read. Self-contained. */
+export function findUnreadableStyleSheets(): string[];
+/** In Node: the text of each style sheet that answered in time. Never rejects. */
+export function fetchStyleSheetTexts(
+  hrefs: string[],
+  options?: { fetch?: (url: string, init?: unknown) => Promise<{ ok: boolean; text(): Promise<string> }>; timeoutMs?: number }
+): Promise<Array<{ href: string; text: string }>>;

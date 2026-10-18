@@ -19,9 +19,12 @@ const {
 } = require('./screenshots');
 const { screenshotInPage } = require('./screenshotsInPage');
 const { cropViewportScreenshot } = require('./png');
+const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
 
 module.exports = {
   A11yCoreBuilderBase,
+  findUnreadableStyleSheets,
+  fetchStyleSheetTexts,
   VALID_OUTCOMES,
   canReconstructAsFunction,
   toReconstructableSource,
