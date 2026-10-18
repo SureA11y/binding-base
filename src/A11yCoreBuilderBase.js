@@ -4,6 +4,7 @@ const { toReconstructableSource } = require('./customRuleReconstruction');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { normalizeScreenshotOptions, captureScreenshots } = require('./screenshots');
+const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -127,6 +128,8 @@ class A11yCoreBuilderBase {
     this._packs = [];
     this._packScriptSource = null;
     this._screenshots = null;
+    // Fetch the style sheets the page can't read, for core to read instead.
+    this._fetchStyleSheets = true;
     this._screenshotScan = null;
   }
 
@@ -454,6 +457,70 @@ class A11yCoreBuilderBase {
     }
     this._screenshots = normalized;
     return this;
+  }
+
+  /**
+   * Whether to fetch, from Node, the style sheets the page can't read
+   * (another origin's) and give core their text, so a rule that reads the
+   * CSS, as css-orientation-lock does, can check them instead of asking. On
+   * by default, as axe fetches them; `false` sends no request but the page's
+   * own. Needs @surea11y/core 1.14.0 or later, and a binding that implements
+   * `_evaluateInFrame()`; otherwise it does nothing.
+   * @param {boolean} [enabled=true]
+   */
+  fetchStyleSheets(enabled = true) {
+    if (typeof enabled !== 'boolean') {
+      const err = new TypeError(`A11yCoreBuilder.fetchStyleSheets(): expected true or false, not ${JSON.stringify(enabled)}.`);
+      err.code = 'INVALID_ENGINE_OPTIONS';
+      throw err;
+    }
+    this._fetchStyleSheets = enabled;
+    return this;
+  }
+
+  /**
+   * The engine options for a scan of `frame`, with the text of the style
+   * sheets it can't read added to `styleSheetTexts`, for a subclass's
+   * analyze() to call before each frame's scan:
+   *
+   *   const options = await this._styleSheetEngineOptions(frame, engineOptions);
+   *
+   * Asks the page which sheets it can't read (_evaluateInFrame()), fetches
+   * them from Node, where no CORS applies, with `this._styleSheetFetch` if a
+   * binding sets one (its driver's request API, which carries the page's
+   * cookies) or the global fetch, each within five seconds, and leaves out
+   * any whose text the caller already gave. Never throws: when anything
+   * fails, or with fetchStyleSheets(false), an older core or no
+   * _evaluateInFrame(), it returns `engineOptions` as given.
+   */
+  async _styleSheetEngineOptions(frame, engineOptions) {
+    const given = engineOptions || {};
+    if (!this._fetchStyleSheets || typeof this._evaluateInFrame !== 'function') return given;
+    try {
+      if (!this._coreReadsStyleSheetTexts()) return given;
+      const hrefs = await this._evaluateInFrame(frame, findUnreadableStyleSheets, []);
+      const have = Array.isArray(given.styleSheetTexts) ? given.styleSheetTexts : [];
+      const wanted = (Array.isArray(hrefs) ? hrefs : []).filter((h) => !have.some((s) => s && s.href === h));
+      if (!wanted.length) return given;
+      const fetched = await fetchStyleSheetTexts(wanted, { fetch: this._styleSheetFetch || globalThis.fetch });
+      return fetched.length ? { ...given, styleSheetTexts: have.concat(fetched) } : given;
+    } catch {
+      return given;
+    }
+  }
+
+  /**
+   * Whether the @surea11y/core installed beside the binding reads
+   * engineOptions.styleSheetTexts: it has preloadStyleSheets(), which came
+   * with it (1.14.0). False where core can't be loaded (a browser bundle).
+   */
+  _coreReadsStyleSheetTexts() {
+    try {
+      if (typeof module !== 'object' || !module || typeof module.require !== 'function') return false;
+      return typeof module.require(CORE).preloadStyleSheets === 'function';
+    } catch {
+      return false;
+    }
   }
 
   /**
