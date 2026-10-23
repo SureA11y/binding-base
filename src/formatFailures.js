@@ -3,6 +3,7 @@
 const { formatOccurrenceLocation } = require('./shadowDom');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
+const { readFailOnSeverity, countsForGate } = require('./severityGate');
 
 const NO_FINDINGS = 'No accessibility violations found.';
 const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was scanned.';
@@ -41,15 +42,18 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  *   array (or any subset of it, e.g. already passed through .reportOnly())
  *   -- see surea11y's docs/OUTPUT_SCHEMA.md for the shape. For a
  *   frames(true) scan, format `topFrame` and each frame on its own.
- * @param {{ outcomes?: string[] }} [opts] Which outcomes to include.
- *   Defaults to ['fail', 'cantTell'] -- the outcomes that report something
- *   found. A `notApplicable` rule may still carry one occurrence saying why
- *   it had nothing to judge, which is not a finding and stays out by
- *   default; see OUTPUT_SCHEMA.md's note on occurrences.
+ * @param {{ outcomes?: string[], failOnSeverity?: string }} [opts] Which
+ *   outcomes to include. Defaults to ['fail', 'cantTell'] -- the outcomes
+ *   that report something found. A `notApplicable` rule may still carry one
+ *   occurrence saying why it had nothing to judge, which is not a finding
+ *   and stays out by default; see OUTPUT_SCHEMA.md's note on occurrences.
+ *   With `failOnSeverity` (as getGatingFailures() takes it), a failure below
+ *   that level is still listed, marked as one that doesn't fail the test.
  * @returns {string}
  */
-function formatFailures(input, { outcomes = ['fail', 'cantTell'] } = {}) {
-  if (Array.isArray(input)) return formatChecks(input, outcomes) || NO_FINDINGS;
+function formatFailures(input, { outcomes = ['fail', 'cantTell'], failOnSeverity } = {}) {
+  const level = readFailOnSeverity(failOnSeverity, 'formatFailures(): failOnSeverity');
+  if (Array.isArray(input)) return formatChecks(input, outcomes, level) || NO_FINDINGS;
   if (!input || typeof input !== 'object' || !Array.isArray(input.checksResults)) {
     throw new TypeError(
       'formatFailures(): expected a scan result or its checksResults array; ' +
@@ -57,7 +61,7 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'] } = {}) {
     );
   }
 
-  const findings = formatChecks(input.checksResults, outcomes);
+  const findings = formatChecks(input.checksResults, outcomes, level);
   const gaps = getScanGaps(input);
   const blocks = [];
   if (findings) blocks.push(findings);
@@ -71,8 +75,13 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'] } = {}) {
   return blocks.join('\n\n');
 }
 
-function formatChecks(checksResults, outcomes) {
+function formatChecks(checksResults, outcomes, level) {
   const relevant = checksResults.filter((r) => outcomes.includes(r.outcome));
+  // A failing rule below the gate's level: listed, and marked.
+  const label = (check) =>
+    check.outcome === 'fail' && !countsForGate(check.severity, level)
+      ? `${check.severity}, below failOnSeverity ${level}, does not fail the test`
+      : check.severity;
 
   const lines = [];
   let n = 0;
@@ -82,14 +91,18 @@ function formatChecks(checksResults, outcomes) {
       // and error set to the exception message (see OUTPUT_SCHEMA.md) --
       // still worth surfacing rather than silently dropping.
       n += 1;
-      lines.push(`${n}) ${check.ruleId} (${check.severity}): ${check.error || check.title}`);
+      lines.push(`${n}) ${check.ruleId} (${label(check)}): ${check.error || check.title}`);
       continue;
     }
     for (const occurrence of check.occurrences) {
       n += 1;
-      lines.push(`${n}) ${check.ruleId} (${check.severity}): ${occurrence.summary}`);
+      lines.push(`${n}) ${check.ruleId} (${label(check)}): ${occurrence.summary}`);
       const location = formatOccurrenceLocation(occurrence);
       if (location) lines.push(`   at ${location}`);
+      // Scanned under conditions (.conditions()): where it was found.
+      if (Array.isArray(occurrence.conditions) && occurrence.conditions.length) {
+        lines.push(`   seen in: ${occurrence.conditions.join(', ')}`);
+      }
       if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
       // A picture written to a file by .screenshots({ dir }); one held as a
       // buffer, or skipped, has nothing to point to.

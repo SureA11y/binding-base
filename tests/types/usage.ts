@@ -5,6 +5,12 @@ import {
   A11yCoreBuilderBase,
   EngineError,
   createInPageScan,
+  createInPageAnnouncements,
+  getGatingFailures,
+  SEVERITIES,
+  readConditions,
+  conditionLabel,
+  mergeConditionResults,
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
@@ -43,9 +49,14 @@ const { contextSelector, engineOptions, runOnly } = builder._buildEngineArgs();
 const scan = createInPageScan(runa11yCoreInPage);
 const scanned: ScanResult = rethrowEngineError(result);
 scan(null, contextSelector, engineOptions, runOnly);
+const readAnnouncements = createInPageAnnouncements(() => null);
+const said: string[] = (readAnnouncements() || []).map((a) => `${a.politeness}: ${a.text} at ${a.time}`);
 
 const filtered: ScanResult = builder._applyReportOnly(scanned);
 const message: string = formatFailures(filtered) + formatFailures(filtered.checksResults, { outcomes: ['fail'] });
+const gating = getGatingFailures(scanned, { failOnSeverity: 'serious' });
+const gatingIds: string[] = gating.map((c) => c.ruleId);
+const marked: string = formatFailures(scanned, { failOnSeverity: SEVERITIES[2] });
 
 builder.logger((gap, frameResult) => {
   const line: string = `${frameResult.url ?? ''}: ${gap.message}`;
@@ -63,6 +74,7 @@ for (const gap of getScanGaps(result)) {
 
 for (const note of getScanNotes(result)) {
   if (note.kind === 'internals-hook') note.hook.toUpperCase();
+  else if (note.kind === 'listener-hook') note.elementCount.toFixed();
   else note.message.toUpperCase();
 }
 
@@ -106,3 +118,9 @@ async function ownCapture(win: Window): Promise<string> {
 }
 
 export { message, element, where, packScript, shot, fileName, described, ownCapture };
+
+builder.conditions([{ colorScheme: 'dark' }, { width: 320 }]).conditions(null);
+const checked = readConditions([{ colorScheme: 'dark', width: 320 }]);
+const label: string = conditionLabel(checked ? checked[0] : null);
+const merged = mergeConditionResults([{ condition: 'default', result: scanned }]);
+const runLabels: string[] = merged.conditionRuns.map((r) => r.condition);

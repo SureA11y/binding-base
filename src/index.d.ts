@@ -140,7 +140,7 @@ export class A11yCoreBuilderBase {
   includeMode(mode: IncludeMode): this;
   /** The WCAG level of the criteria the scan reports, without changing which rules run; null clears it (@surea11y/core 1.12.0 and later). */
   wcagLevel(level: WcagLevelInput | null): this;
-  /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result, and once per scan for the `internals-hook` note. `null` goes back to console.warn. */
+  /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result, and once per scan for each of the `internals-hook` and `listener-hook` notes. `null` goes back to console.warn. */
   logger(fn: ((entry: ScanGap | ScanNote, result: ScanResultLike) => void) | null): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
@@ -157,6 +157,21 @@ export class A11yCoreBuilderBase {
    */
   fetchStyleSheets(enabled?: boolean): this;
   frames(enabled?: boolean): this;
+  /**
+   * Also scan the page under each condition after scanning it as it is;
+   * analyze() returns one merged result (mergeConditionResults()). Not
+   * combined with frames(true) yet. null or [] turns it off.
+   */
+  conditions(list: ReadonlyArray<ScanCondition> | null): this;
+  /** For a subclass's analyze(): scan as the page is, then under each condition, and merge. */
+  _scanUnderConditions<T>(
+    scan: () => Promise<T>,
+    driver: {
+      save: () => Promise<unknown>;
+      apply: (condition: ScanCondition) => Promise<void>;
+      restore: (state: unknown) => Promise<void>;
+    }
+  ): Promise<T & { conditionRuns: ConditionRun[] }>;
   /** The rules a scan with this builder will run, from core's getChecksForRunOnly(); in Node, no page needed (@surea11y/core 1.12.0 and later). */
   plannedChecks(): PlannedCheck[];
   /** The criteria a scan with this builder will report in rulesResults, from core's getRulesForRunOnly() (@surea11y/core 1.12.0 and later). */
@@ -212,6 +227,23 @@ export type InPageScan = (
  */
 export function createInPageScan(runa11yCoreInPage: (...args: any[]) => unknown): InPageScan;
 
+/** A text a live region was given, as a driver carries it back from the page. */
+export interface Announcement {
+  text: string;
+  politeness: 'polite' | 'assertive';
+  /** performance.now() in the page, in milliseconds. */
+  time: number;
+}
+
+/**
+ * Wraps core's getAnnouncements (1.14.0 and later) in a self-contained
+ * function to run in a page: it returns what the page's live regions were
+ * given, as the live-region hook recorded it, or null without the hook.
+ */
+export function createInPageAnnouncements(
+  getAnnouncements: (...args: any[]) => unknown
+): () => Announcement[] | null;
+
 /** Throws an EngineError when `value` is one returned by a createInPageScan() function; otherwise returns `value`. */
 export function rethrowEngineError<T>(value: T): T;
 
@@ -235,6 +267,8 @@ export interface ScanResultLike {
       forcedColors?: 'active' | 'none';
       /** Whether the internals hook ran in the page, and when (@surea11y/core 1.12.0 and later). */
       internalsHook?: 'early' | 'late';
+      /** Whether the listener hook ran in the page, and when (@surea11y/core 1.14.0 and later). */
+      listenerHook?: 'early' | 'late';
     };
   };
 }
@@ -247,9 +281,10 @@ export type ScanGap =
 
 export type ScanNote =
   | { kind: 'forced-colors'; message: string }
-  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number };
+  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number }
+  | { kind: 'listener-hook'; message: string; hook: 'none' | 'late'; elementCount: number };
 
-/** What a reader should know about how the page was scanned: forced colors, and custom elements the internals hook would have let the engine read. Throws a TypeError for anything but one result. */
+/** What a reader should know about how the page was scanned: forced colors, custom elements the internals hook would have let the engine read, and elements whose keyboard equivalent the listener hook would have let it see. Throws a TypeError for anything but one result. */
 export function getScanNotes(result: ScanResultLike): ScanNote[];
 
 /** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
@@ -260,7 +295,55 @@ export function getScanGaps(result: ScanResultLike): ScanGap[];
  * scan gaps and the engine version. Throws a TypeError for anything else
  * than a result or a checksResults array.
  */
-export function formatFailures(input: ScanResultLike | ReadonlyArray<object>, opts?: { outcomes?: Outcome[] }): string;
+export function formatFailures(
+  input: ScanResultLike | ReadonlyArray<object>,
+  opts?: { outcomes?: Outcome[]; failOnSeverity?: Severity }
+): string;
+
+/** A rule result's severity, least to most severe in SEVERITIES. */
+export type Severity = 'minor' | 'moderate' | 'serious' | 'critical';
+
+/** The four severities, least to most severe. */
+export const SEVERITIES: ReadonlyArray<Severity>;
+
+/**
+ * The failing rule results that fail a test: every `fail`, or with
+ * `failOnSeverity` only those whose severity is that level or above, as
+ * `surea11y scan --fail-on-severity` counts them. Throws a TypeError for a
+ * level that is not a severity.
+ */
+/** A condition to scan a page under: a color scheme, a viewport width in CSS pixels, or both. */
+export interface ScanCondition {
+  colorScheme?: 'light' | 'dark';
+  width?: number;
+}
+
+/** One scan of a merged result: its condition's label ('default' for the page as it was) and environment. */
+export interface ConditionRun {
+  condition: string;
+  environment: Record<string, unknown> | null;
+}
+
+/** Checks a list of conditions as .conditions() takes it; null for none. Throws a TypeError for a bad one. */
+export function readConditions(list: unknown, where?: string): ScanCondition[] | null;
+
+/** A condition's label, as occurrences list it: 'dark', 'width 320', 'dark, width 320'; 'default' for null. */
+export function conditionLabel(condition: ScanCondition | null): string;
+
+/**
+ * One result from the scans of a page under several conditions, the default
+ * scan first: each rule's worst outcome, occurrences merged by element, rule
+ * and reason code with the `conditions` they appeared under, and
+ * `conditionRuns`.
+ */
+export function mergeConditionResults<T extends { checksResults: ReadonlyArray<object> }>(
+  runs: ReadonlyArray<{ condition: string; result: T }>
+): T & { conditionRuns: ConditionRun[] };
+
+export function getGatingFailures<T extends { outcome: string; severity?: string }>(
+  input: { checksResults: ReadonlyArray<T> } | ReadonlyArray<T>,
+  opts?: { failOnSeverity?: Severity }
+): T[];
 
 /** Where an occurrence or a margin points: what queryOccurrenceElement() and formatOccurrenceLocation() read. */
 export interface OccurrenceLocation {

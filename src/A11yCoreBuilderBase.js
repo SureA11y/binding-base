@@ -1,6 +1,7 @@
 'use strict';
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
+const { readConditions, conditionLabel, mergeConditionResults } = require('./conditions');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { normalizeScreenshotOptions, captureScreenshots } = require('./screenshots');
@@ -120,7 +121,7 @@ class A11yCoreBuilderBase {
     this._includeMode = null;
     this._wcagLevel = null;
     this._logger = null;
-    this._saidInternalsNote = false;
+    this._saidHookNotes = new Set();
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
@@ -131,6 +132,10 @@ class A11yCoreBuilderBase {
     // Fetch the style sheets the page can't read, for core to read instead.
     this._fetchStyleSheets = true;
     this._screenshotScan = null;
+    // .conditions(): the conditions to scan the page under after the default.
+    this._conditions = null;
+    // While a scan under a condition runs, its label: screenshots name it.
+    this._screenshotCondition = null;
   }
 
   /**
@@ -545,11 +550,70 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * Also scan the page under each condition, after scanning it as it is:
+   * `{ colorScheme: 'light' | 'dark' }`, `{ width: px }` (the viewport's
+   * width in CSS pixels, its height kept), or both, such as
+   * `[{ colorScheme: 'dark' }, { width: 320 }]`. analyze() then returns one
+   * result merged from the scans (mergeConditionResults()): a rule's
+   * outcome is its worst across them, and each occurrence lists the
+   * `conditions` it appeared under ('default' for the page as it was).
+   * The viewport and color scheme are put back afterwards. Not combined
+   * with .frames(true) yet. An empty list or null turns it off.
+   * @param {Array<{ colorScheme?: 'light'|'dark', width?: number }>|null} list
+   */
+  conditions(list) {
+    this._conditions = readConditions(list, 'A11yCoreBuilder.conditions()');
+    return this;
+  }
+
+  /**
+   * Runs `scan()` as the page is, then once under each condition, and
+   * merges the results; for a subclass's Promise-based analyze() to call
+   * when .conditions() was given. The driver work is the subclass's:
+   * `save()` resolves to whatever `restore(state)` needs to put the page
+   * back, and is called before the first scan, so it can refuse a
+   * condition the driver can't set; `apply(condition)` sets one condition's
+   * color scheme and width. `restore` runs even when a scan throws. Throws when
+   * .frames(true) is also set.
+   * @param {() => Promise<object>} scan
+   * @param {{ save: () => Promise<*>, apply: (condition: object) => Promise<void>, restore: (state: *) => Promise<void> }} driver
+   */
+  async _scanUnderConditions(scan, { save, apply, restore }) {
+    this._assertConditionsAlone();
+    // Saved first, so a condition the driver can't set is refused before
+    // any scan.
+    const state = await save();
+    const runs = [{ condition: 'default', result: await scan() }];
+    try {
+      for (const condition of this._conditions) {
+        await apply(condition);
+        this._screenshotCondition = conditionLabel(condition);
+        try {
+          runs.push({ condition: this._screenshotCondition, result: await scan() });
+        } finally {
+          this._screenshotCondition = null;
+        }
+      }
+    } finally {
+      await restore(state);
+    }
+    return mergeConditionResults(runs);
+  }
+
+  /** Throws when .conditions() and .frames(true) are both set, which can't be combined yet. */
+  _assertConditionsAlone() {
+    if (this._conditions && this._scanFrames) {
+      throw new Error('A11yCoreBuilder: .conditions() and .frames(true) can\'t be combined yet; scan the frames and the conditions in two analyze() calls.');
+    }
+  }
+
+  /**
    * Where analyze() sends the scan gaps it reports (see `_warnScanGaps()`):
    * `fn(gap, result)` is called once per gap, with the gap as getScanGaps()
    * gives it and the result of the frame it came from, instead of printing
-   * it with console.warn; and once for the `internals-hook` note, as
-   * getScanNotes() gives it (tell them apart by `kind`). `() => {}`
+   * it with console.warn; and once each for the `internals-hook` and
+   * `listener-hook` notes, as getScanNotes() gives them (tell them apart by
+   * `kind`). `() => {}`
    * silences them; `null` goes back to console.warn. Calling it again
    * replaces the logger.
    * @param {((gap: object, result: object) => void)|null} fn
@@ -568,9 +632,9 @@ class A11yCoreBuilderBase {
    * asserts on it. A subclass's analyze() calls it once per scanned frame.
    * Each gap goes to the logger() function when one is set; otherwise it is
    * printed with console.warn as `<source> (<frame url>): <message>`. The
-   * `internals-hook` note of getScanNotes() goes the same way, once per
-   * builder: custom elements the internals hook would have let the engine
-   * read. Other notes are left to formatFailures().
+   * `internals-hook` and `listener-hook` notes of getScanNotes() go the same
+   * way, each once per builder: elements one of the hooks would have let the
+   * engine judge. Other notes are left to formatFailures().
    * Anything that isn't a scan result is passed over: the caller sees it as
    * it is.
    * @param {object} result one frame's scan result
@@ -583,11 +647,14 @@ class A11yCoreBuilderBase {
     } catch (e) {
       return;
     }
-    // The internals-hook note, said once per builder (one builder per scan,
-    // so once per scan, whichever frame asked first): it is advice about how
-    // the page was loaded, the same for every frame.
-    const notes = this._saidInternalsNote ? [] : getScanNotes(result).filter((n) => n.kind === 'internals-hook');
-    if (notes.length) this._saidInternalsNote = true;
+    // The internals-hook and listener-hook notes, each said once per builder
+    // (one builder per scan, so once per scan, whichever frame asked first):
+    // they are advice about how the page was loaded, the same for every frame.
+    const said = this._saidHookNotes;
+    const notes = getScanNotes(result).filter(
+      (n) => (n.kind === 'internals-hook' || n.kind === 'listener-hook') && !said.has(n.kind)
+    );
+    for (const n of notes) said.add(n.kind);
     for (const entry of gaps.concat(notes)) {
       if (this._logger) {
         this._logger(entry, result);
