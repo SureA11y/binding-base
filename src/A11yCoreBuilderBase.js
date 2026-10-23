@@ -120,7 +120,7 @@ class A11yCoreBuilderBase {
     this._includeMode = null;
     this._wcagLevel = null;
     this._logger = null;
-    this._saidInternalsNote = false;
+    this._saidHookNotes = new Set();
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
@@ -548,8 +548,9 @@ class A11yCoreBuilderBase {
    * Where analyze() sends the scan gaps it reports (see `_warnScanGaps()`):
    * `fn(gap, result)` is called once per gap, with the gap as getScanGaps()
    * gives it and the result of the frame it came from, instead of printing
-   * it with console.warn; and once for the `internals-hook` note, as
-   * getScanNotes() gives it (tell them apart by `kind`). `() => {}`
+   * it with console.warn; and once each for the `internals-hook` and
+   * `listener-hook` notes, as getScanNotes() gives them (tell them apart by
+   * `kind`). `() => {}`
    * silences them; `null` goes back to console.warn. Calling it again
    * replaces the logger.
    * @param {((gap: object, result: object) => void)|null} fn
@@ -568,9 +569,9 @@ class A11yCoreBuilderBase {
    * asserts on it. A subclass's analyze() calls it once per scanned frame.
    * Each gap goes to the logger() function when one is set; otherwise it is
    * printed with console.warn as `<source> (<frame url>): <message>`. The
-   * `internals-hook` note of getScanNotes() goes the same way, once per
-   * builder: custom elements the internals hook would have let the engine
-   * read. Other notes are left to formatFailures().
+   * `internals-hook` and `listener-hook` notes of getScanNotes() go the same
+   * way, each once per builder: elements one of the hooks would have let the
+   * engine judge. Other notes are left to formatFailures().
    * Anything that isn't a scan result is passed over: the caller sees it as
    * it is.
    * @param {object} result one frame's scan result
@@ -583,11 +584,14 @@ class A11yCoreBuilderBase {
     } catch (e) {
       return;
     }
-    // The internals-hook note, said once per builder (one builder per scan,
-    // so once per scan, whichever frame asked first): it is advice about how
-    // the page was loaded, the same for every frame.
-    const notes = this._saidInternalsNote ? [] : getScanNotes(result).filter((n) => n.kind === 'internals-hook');
-    if (notes.length) this._saidInternalsNote = true;
+    // The internals-hook and listener-hook notes, each said once per builder
+    // (one builder per scan, so once per scan, whichever frame asked first):
+    // they are advice about how the page was loaded, the same for every frame.
+    const said = this._saidHookNotes;
+    const notes = getScanNotes(result).filter(
+      (n) => (n.kind === 'internals-hook' || n.kind === 'listener-hook') && !said.has(n.kind)
+    );
+    for (const n of notes) said.add(n.kind);
     for (const entry of gaps.concat(notes)) {
       if (this._logger) {
         this._logger(entry, result);
