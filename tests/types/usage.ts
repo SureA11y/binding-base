@@ -6,6 +6,8 @@ import {
   EngineError,
   createInPageScan,
   createInPageAnnouncements,
+  getGatingFailures,
+  SEVERITIES,
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
@@ -49,6 +51,9 @@ const said: string[] = (readAnnouncements() || []).map((a) => `${a.politeness}: 
 
 const filtered: ScanResult = builder._applyReportOnly(scanned);
 const message: string = formatFailures(filtered) + formatFailures(filtered.checksResults, { outcomes: ['fail'] });
+const gating = getGatingFailures(scanned, { failOnSeverity: 'serious' });
+const gatingIds: string[] = gating.map((c) => c.ruleId);
+const marked: string = formatFailures(scanned, { failOnSeverity: SEVERITIES[2] });
 
 builder.logger((gap, frameResult) => {
   const line: string = `${frameResult.url ?? ''}: ${gap.message}`;

@@ -156,6 +156,21 @@ Scanned with @surea11y/core 1.12.0.
 
 It throws a `TypeError` for anything else, such as the `{ topFrame, frames }` tree of a `frames(true)` scan: format `topFrame` and each frame on its own.
 
+With `{ failOnSeverity }`, as `getGatingFailures()` below takes it, a failure below that level is still listed, marked `(moderate, below failOnSeverity serious, does not fail the test)`.
+
+### `getGatingFailures(resultOrChecks, { failOnSeverity? })` and `SEVERITIES`
+
+The failing rule results that should fail a test: every `fail`, or with `failOnSeverity` only those whose severity is that level or above (`SEVERITIES` lists them least to most severe: `minor`, `moderate`, `serious`, `critical`). The severity is the rule result's own, which a profile can set, so it counts the same failures `surea11y scan --fail-on-severity` does for the same page. `fail` keeps its meaning, a definite violation; the level only picks which ones stop the test, and every failure stays in the result. A level that isn't a severity throws a `TypeError`. Each binding re-exports both, for a test to gate on serious problems first:
+
+```js
+const results = await new A11yCoreBuilder({ page }).analyze();
+assert.deepStrictEqual(
+  getGatingFailures(results, { failOnSeverity: 'serious' }),
+  [],
+  formatFailures(results, { failOnSeverity: 'serious' })
+);
+```
+
 ### Rule and tag lists
 
 `withTags()`/`disableTags()`/`withRules()`/`disableRules()` take a string or an array of strings, and throw a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call for anything else (`undefined` from a missing config value, an empty string). Since core 1.10.0 the scan itself throws `INVALID_RUN_ONLY` when none of the rule IDs, or none of the tags, in an include list is one it knows, and warns about an unknown one beside known ones.
