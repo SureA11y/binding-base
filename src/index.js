@@ -20,6 +20,7 @@ const {
 const { screenshotInPage } = require('./screenshotsInPage');
 const { cropViewportScreenshot } = require('./png');
 const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
+const { SEVERITIES, getGatingFailures } = require('./severityGate');
 
 module.exports = {
   A11yCoreBuilderBase,
@@ -34,6 +35,8 @@ module.exports = {
   createInPageScan,
   rethrowEngineError,
   formatFailures,
+  getGatingFailures,
+  SEVERITIES,
   getScanGaps,
   getScanNotes,
   queryOccurrenceElement,
