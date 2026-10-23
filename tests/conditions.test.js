@@ -77,6 +77,19 @@ test('mergeConditionResults(): worst outcome per rule, one occurrence per elemen
   assert.match(formatFailures(merged), /p BELOW\n {3}at p\n {3}seen in: dark/);
 });
 
+test('mergeConditionResults(): a failing rule drops the summary occurrence of the scans where it passed', () => {
+  const merged = mergeConditionResults([
+    run('default', [{ ruleId: 'contrast-minimum', outcome: 'pass', occurrences: [occ('', 'ALL_ABOVE_THRESHOLD')] }]),
+    run('dark', [{ ruleId: 'contrast-minimum', outcome: 'fail', occurrences: [occ('p', 'BELOW')] }])
+  ]);
+  assert.deepStrictEqual(merged.checksResults[0].occurrences.map((o) => o.data.details.reasonCode), ['BELOW']);
+  const passing = mergeConditionResults([
+    run('default', [{ ruleId: 'contrast-minimum', outcome: 'pass', occurrences: [occ('', 'ALL_ABOVE_THRESHOLD')] }]),
+    run('dark', [{ ruleId: 'contrast-minimum', outcome: 'pass', occurrences: [occ('', 'ALL_ABOVE_THRESHOLD')] }])
+  ]);
+  assert.deepStrictEqual(passing.checksResults[0].occurrences.map((o) => o.conditions), [['default', 'dark']]);
+});
+
 test('mergeConditionResults(): a rule only some scans kept (reportOnly) is taken from those, and composites take the worst', () => {
   const merged = mergeConditionResults([
     { condition: 'default', result: { checksResults: [], rulesResults: [{ ruleId: 'wcag-1.4.3', outcome: 'pass' }] } },
