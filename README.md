@@ -4,7 +4,7 @@ Shared, driver-agnostic scaffolding for [`@surea11y/core`](https://github.com/Su
 
 > **Looking to check accessibility?** Install `@surea11y/core` with the package for your tool instead: [`@surea11y/playwright`](https://github.com/SureA11y/playwright), [`@surea11y/puppeteer`](https://github.com/SureA11y/puppeteer), [`@surea11y/selenium`](https://github.com/SureA11y/selenium), [`@surea11y/webdriverio`](https://github.com/SureA11y/webdriverio) or [`@surea11y/cypress`](https://github.com/SureA11y/cypress) for browser tests, [`@surea11y/test-matchers`](https://github.com/SureA11y/test-matchers) for Jest or Vitest component tests. For the terminal or CI, install [`@surea11y/cli`](https://github.com/SureA11y/cli) on its own; it brings core with it. None of them needs this package installed separately.
 
-**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, notes on forced colors and the internals hook, and `plannedChecks()`/`plannedCriteria()`, the list of what a scan will check before it runs; since 1.5.0, `.screenshots()`, a picture of each element a scan flags, with what a binding needs to take them; and, since 1.6.0, fetching the style sheets a page can't read, which core 1.14.0 then checks.
+**Not useful on its own.** This package has no driver dependency and doesn't know how to scan a page by itself — it exists purely to hold the logic that was, until this package existed, copy-pasted byte-for-byte across all five binding projects' own `A11yCoreBuilder.js` files: the fluent scoping methods (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`), `reportOnly()`/`elementRef()`/`frames()`'s flag-tracking, `withCustomRules()`'s validation, and `formatFailures()`; since 1.2.0, what every binding needs to read `@surea11y/core` 1.10.0's errors and results the same way; since 1.3.0, what core 1.11 adds to a scan: packs, WCAG targets and best practices; and, since 1.4.0, what core 1.12.0 adds: `wcagLevel()`, notes on forced colors and the internals hook, and `plannedChecks()`/`plannedCriteria()`, the list of what a scan will check before it runs; since 1.5.0, `.screenshots()`, a picture of each element a scan flags, with what a binding needs to take them; and, since 1.6.0, fetching the style sheets a page can't read, which core 1.14.0 then checks, and a note on core 1.14.0's listener hook.
 
 Extracted once five real consumers existed and the duplication was actually costing something — each binding carried the same logic in parallel, and keeping it in sync by hand across five packages was no longer worth the cost once there were that many consumers to justify a shared package.
 
@@ -70,9 +70,10 @@ Extracted once five real consumers existed and the duplication was actually cost
   ```
 
   A custom rule the selection leaves out on its own, such as one tagged `best-practice` under a `withWcag()` target, is still a gap: the caller asked for it and it didn't run.
-- **`getScanNotes(result)`** — what a reader should know about *how* the page was scanned (core 1.12.0 and later). Unlike a gap, a note doesn't mean anything was left out, so `@surea11y/test-matchers` doesn't fail on one. Two kinds, each with a `message`:
+- **`getScanNotes(result)`** — what a reader should know about *how* the page was scanned (core 1.12.0 and later). Unlike a gap, a note doesn't mean anything was left out, so `@surea11y/test-matchers` doesn't fail on one. Three kinds, each with a `message`:
   - `'forced-colors'`: the page was shown in forced colors (Windows high contrast, or emulated `forced-colors: active`), so contrast findings may differ with forced colors off. Often an accident of the CI machine.
   - `'internals-hook'`: the scan asked about custom elements because it couldn't read the name or states they set through a private `ElementInternals`, and the [internals hook](#the-internals-hook) wasn't installed (`hook: 'none'`), or was installed after the page's scripts ran (`'late'`). `elementCount` says how many elements.
+  - `'listener-hook'` (core 1.14.0 and later): the scan asked about elements whose inline click or pointer handler may have a keyboard equivalent added from script (`CLICK_HANDLER_NO_KEY_HANDLER`, `MOUSE_ONLY_HANDLER_NO_KEYBOARD_EQUIVALENT`), and the [listener hook](#the-listener-hook) wasn't installed (`hook: 'none'`), or was installed after the page's scripts ran (`'late'`). `elementCount` says how many elements.
 
   ```js
   for (const note of getScanNotes(results)) {
@@ -82,8 +83,8 @@ Extracted once five real consumers existed and the duplication was actually cost
   }
   ```
 
-  `formatFailures()` prints every note, and a binding's `analyze()` prints the `internals-hook` note once per scan (see `logger()` below).
-- **`logger(fn)` / `_warnScanGaps(result, source)`** — where a binding's `analyze()` sends the scan gaps it reports. By default each gap is printed with `console.warn`, once per scanned frame, as `@surea11y/puppeteer (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").`, so a mistyped scope shows in a test run's log even where nothing asserts on it. That stays the default. A project that already handles gaps itself can take them over with `logger(fn)`: `fn(gap, result)` is called once per gap, with the gap as `getScanGaps()` gives it and the result of the frame it came from, and `console.warn` isn't called. The `internals-hook` note of `getScanNotes()` goes the same way, once per builder rather than once per frame; check `kind` to tell a note from a gap. `() => {}` silences them, and `null` brings `console.warn` back. Anything other than a function or `null` throws a `TypeError`. Each call replaces the previous logger.
+  `formatFailures()` prints every note, and a binding's `analyze()` prints the `internals-hook` and `listener-hook` notes once per scan each (see `logger()` below).
+- **`logger(fn)` / `_warnScanGaps(result, source)`** — where a binding's `analyze()` sends the scan gaps it reports. By default each gap is printed with `console.warn`, once per scanned frame, as `@surea11y/puppeteer (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").`, so a mistyped scope shows in a test run's log even where nothing asserts on it. That stays the default. A project that already handles gaps itself can take them over with `logger(fn)`: `fn(gap, result)` is called once per gap, with the gap as `getScanGaps()` gives it and the result of the frame it came from, and `console.warn` isn't called. The `internals-hook` and `listener-hook` notes of `getScanNotes()` go the same way, each once per builder rather than once per frame; check `kind` to tell a note from a gap. `() => {}` silences them, and `null` brings `console.warn` back. Anything other than a function or `null` throws a `TypeError`. Each call replaces the previous logger.
 
   That fits a scanning service, which shows gaps to its users and wants them once in its own structured log rather than again as a loose line on the server's console for every scan:
 
@@ -251,6 +252,27 @@ What a binding's docs should say about it, in its own words:
 - **What a page can notice.** `HTMLElement.prototype.attachInternals` is no longer native code, an extra stack frame appears in errors thrown through it, and a global symbol (`Symbol.for('surea11y.internals')`) holds the record. Any script on the page can read every component's internals through it, so it is for test and audit runs, not production.
 
 A binding needs no other code for the advice, as long as its `analyze()` calls the shared `_warnScanGaps(result, source)` rather than a `_warnScanGaps()` of its own: it prints `getScanNotes()`'s `internals-hook` note once per scan when the scan asked about internals without an early hook, and hands it to `logger()` when one is set.
+
+### The listener hook
+
+Core's keyboard rules read inline handlers (`onclick="…"`) from the markup. A listener a page adds with `addEventListener`, or sets as a property (`el.onclick = fn`), leaves no trace a script can read, so a `role="button"` given its click listener from script isn't checked at all, and an inline `onclick` whose key handling was added from script is only asked about (`CLICK_HANDLER_NO_KEY_HANDLER`). `listenerHookScript()` from `@surea11y/core` (1.14.0 and later) returns a script that, run before the page's own scripts, records which elements have click, key, focus and mouse listeners. See core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#seeing-listeners-added-from-script-the-listener-hook).
+
+Each binding offers it as it offers the internals hook: a static **`A11yCoreBuilder.installListenerHook(target)`**, called before navigating, opt-in, doing nothing else, through the same driver call as `installInternalsHook()` with `listenerHookScript()` in place of `internalsHookScript()`. The two can be installed together.
+
+```js
+await A11yCoreBuilder.installListenerHook(page); // before goto
+await page.goto('https://example.com/');
+const results = await new A11yCoreBuilder({ page }).analyze();
+results.engine.environment.listenerHook; // 'early'
+```
+
+What a binding's docs should say about it, in its own words:
+
+- **What it changes.** `click-handler-keyboard-operable` judges an element given a click listener from script as one with an inline `onclick`, and counts a key listener on the element or inside it. A focusable control with no key listener anywhere a key event from it goes fails (`CLICK_HANDLER_NO_KEY_LISTENER`); one whose only key listeners are on an ancestor, the document or the window is asked about. A click listener on a container (a framework's root) makes no element inside it a candidate. `mouse-only-event-handlers` asks about pointer listeners added from script. The result records the hook in `engine.environment.listenerHook`: `'early'`, `'late'` or absent.
+- **When to install it.** Before the page loads. Only an early hook proves an element has no key listener, so only then does a control fail for lack of one; a late hook sees only listeners added after it.
+- **What a page can notice.** `addEventListener`, `removeEventListener` and the `on…` property setters are no longer native code, and a global symbol (`Symbol.for('surea11y.listeners')`) holds the record. It is for test and audit runs, not production.
+
+The advice needs no other code in a binding that calls the shared `_warnScanGaps()`: it prints the `listener-hook` note once per scan, as it does the `internals-hook` note.
 
 ### Screenshots of failing elements
 

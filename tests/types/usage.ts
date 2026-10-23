@@ -63,6 +63,7 @@ for (const gap of getScanGaps(result)) {
 
 for (const note of getScanNotes(result)) {
   if (note.kind === 'internals-hook') note.hook.toUpperCase();
+  else if (note.kind === 'listener-hook') note.elementCount.toFixed();
   else note.message.toUpperCase();
 }
 

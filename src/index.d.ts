@@ -140,7 +140,7 @@ export class A11yCoreBuilderBase {
   includeMode(mode: IncludeMode): this;
   /** The WCAG level of the criteria the scan reports, without changing which rules run; null clears it (@surea11y/core 1.12.0 and later). */
   wcagLevel(level: WcagLevelInput | null): this;
-  /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result, and once per scan for the `internals-hook` note. `null` goes back to console.warn. */
+  /** Where analyze() sends scan gaps instead of console.warn: called once per gap, with that frame's result, and once per scan for each of the `internals-hook` and `listener-hook` notes. `null` goes back to console.warn. */
   logger(fn: ((entry: ScanGap | ScanNote, result: ScanResultLike) => void) | null): this;
   options(partialEngineOptions: Record<string, unknown>): this;
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
@@ -235,6 +235,8 @@ export interface ScanResultLike {
       forcedColors?: 'active' | 'none';
       /** Whether the internals hook ran in the page, and when (@surea11y/core 1.12.0 and later). */
       internalsHook?: 'early' | 'late';
+      /** Whether the listener hook ran in the page, and when (@surea11y/core 1.14.0 and later). */
+      listenerHook?: 'early' | 'late';
     };
   };
 }
@@ -247,9 +249,10 @@ export type ScanGap =
 
 export type ScanNote =
   | { kind: 'forced-colors'; message: string }
-  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number };
+  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number }
+  | { kind: 'listener-hook'; message: string; hook: 'none' | 'late'; elementCount: number };
 
-/** What a reader should know about how the page was scanned: forced colors, and custom elements the internals hook would have let the engine read. Throws a TypeError for anything but one result. */
+/** What a reader should know about how the page was scanned: forced colors, custom elements the internals hook would have let the engine read, and elements whose keyboard equivalent the listener hook would have let it see. Throws a TypeError for anything but one result. */
 export function getScanNotes(result: ScanResultLike): ScanNote[];
 
 /** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
