@@ -274,6 +274,23 @@ What a binding's docs should say about it, in its own words:
 
 The advice needs no other code in a binding that calls the shared `_warnScanGaps()`: it prints the `listener-hook` note once per scan, as it does the `internals-hook` note.
 
+### The live-region hook
+
+A scan sees the page at one moment, so it can't tell how a live region was filled while the test ran. `liveRegionHookScript()` from `@surea11y/core` (1.14.0 and later) returns a script that, run before the page's own scripts, records each text a shown live region is given from the load event on, and the ways of filling one that are commonly not announced, which core's `live-region-announcements` (WCAG 4.1.3) then asks about. See core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#seeing-what-live-regions-are-given-the-live-region-hook).
+
+Each binding offers it as it offers the other two hooks, a static **`A11yCoreBuilder.installLiveRegionHook(target)`** called before navigating, and a static **`A11yCoreBuilder.getAnnouncements(target)`** that reads what the page made available to announce. **`createInPageAnnouncements(getAnnouncements)`** wraps core's function in a self-contained one to run in the page, which returns `[{ text, politeness, time }]`, plain data a driver can carry back (the element each entry names stays in the page), or `null` without the hook:
+
+```js
+const { getAnnouncements } = require('@surea11y/core');
+const { createInPageAnnouncements } = require('@surea11y/binding-base');
+
+const readAnnouncements = createInPageAnnouncements(getAnnouncements);
+// Playwright and Puppeteer: page.evaluate(readAnnouncements)
+// Selenium: driver.executeScript(`return (${readAnnouncements})()`)
+```
+
+What a binding's docs should say about it: it records what the page made available to announce, not what a screen reader said; the result records it in `engine.environment.liveRegionHook`; and a global symbol (`Symbol.for('surea11y.liveRegions')`) holds the record, so it is for test and audit runs, not production.
+
 ### Screenshots of failing elements
 
 A screenshot has to come from whatever drives the browser: nothing in a page's JavaScript can read what was painted. Everything else is shared: `_captureScreenshots()` plans the pictures, runs its in-page step in each frame (find the element, scroll it into view, draw the highlight, put the page back), works out where the element is on the top-level page across frames, names and writes the files, and fills in `screenshot`. A binding gives it the driver through two methods, and calls it once per scanned frame, after the scan and before `reportOnly()`:

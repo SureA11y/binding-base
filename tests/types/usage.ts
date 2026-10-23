@@ -5,6 +5,7 @@ import {
   A11yCoreBuilderBase,
   EngineError,
   createInPageScan,
+  createInPageAnnouncements,
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
@@ -43,6 +44,8 @@ const { contextSelector, engineOptions, runOnly } = builder._buildEngineArgs();
 const scan = createInPageScan(runa11yCoreInPage);
 const scanned: ScanResult = rethrowEngineError(result);
 scan(null, contextSelector, engineOptions, runOnly);
+const readAnnouncements = createInPageAnnouncements(() => null);
+const said: string[] = (readAnnouncements() || []).map((a) => `${a.politeness}: ${a.text} at ${a.time}`);
 
 const filtered: ScanResult = builder._applyReportOnly(scanned);
 const message: string = formatFailures(filtered) + formatFailures(filtered.checksResults, { outcomes: ['fail'] });

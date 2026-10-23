@@ -20,6 +20,7 @@ const {
 const { screenshotInPage } = require('./screenshotsInPage');
 const { cropViewportScreenshot } = require('./png');
 const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
+const { createInPageAnnouncements } = require('./announcements');
 
 module.exports = {
   A11yCoreBuilderBase,
@@ -32,6 +33,7 @@ module.exports = {
   ENGINE_ERROR_KEY,
   EngineError,
   createInPageScan,
+  createInPageAnnouncements,
   rethrowEngineError,
   formatFailures,
   getScanGaps,

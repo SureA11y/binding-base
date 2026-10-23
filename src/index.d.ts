@@ -212,6 +212,23 @@ export type InPageScan = (
  */
 export function createInPageScan(runa11yCoreInPage: (...args: any[]) => unknown): InPageScan;
 
+/** A text a live region was given, as a driver carries it back from the page. */
+export interface Announcement {
+  text: string;
+  politeness: 'polite' | 'assertive';
+  /** performance.now() in the page, in milliseconds. */
+  time: number;
+}
+
+/**
+ * Wraps core's getAnnouncements (1.14.0 and later) in a self-contained
+ * function to run in a page: it returns what the page's live regions were
+ * given, as the live-region hook recorded it, or null without the hook.
+ */
+export function createInPageAnnouncements(
+  getAnnouncements: (...args: any[]) => unknown
+): () => Announcement[] | null;
+
 /** Throws an EngineError when `value` is one returned by a createInPageScan() function; otherwise returns `value`. */
 export function rethrowEngineError<T>(value: T): T;
 
