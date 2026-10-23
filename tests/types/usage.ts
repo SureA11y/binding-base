@@ -7,6 +7,9 @@ import {
   createInPageScan,
   getGatingFailures,
   SEVERITIES,
+  readConditions,
+  conditionLabel,
+  mergeConditionResults,
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
@@ -112,3 +115,9 @@ async function ownCapture(win: Window): Promise<string> {
 }
 
 export { message, element, where, packScript, shot, fileName, described, ownCapture };
+
+builder.conditions([{ colorScheme: 'dark' }, { width: 320 }]).conditions(null);
+const checked = readConditions([{ colorScheme: 'dark', width: 320 }]);
+const label: string = conditionLabel(checked ? checked[0] : null);
+const merged = mergeConditionResults([{ condition: 'default', result: scanned }]);
+const runLabels: string[] = merged.conditionRuns.map((r) => r.condition);

@@ -99,6 +99,10 @@ function formatChecks(checksResults, outcomes, level) {
       lines.push(`${n}) ${check.ruleId} (${label(check)}): ${occurrence.summary}`);
       const location = formatOccurrenceLocation(occurrence);
       if (location) lines.push(`   at ${location}`);
+      // Scanned under conditions (.conditions()): where it was found.
+      if (Array.isArray(occurrence.conditions) && occurrence.conditions.length) {
+        lines.push(`   seen in: ${occurrence.conditions.join(', ')}`);
+      }
       if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
       // A picture written to a file by .screenshots({ dir }); one held as a
       // buffer, or skipped, has nothing to point to.

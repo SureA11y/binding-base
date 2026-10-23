@@ -1,6 +1,7 @@
 'use strict';
 
 const { toReconstructableSource } = require('./customRuleReconstruction');
+const { readConditions, conditionLabel, mergeConditionResults } = require('./conditions');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { normalizeScreenshotOptions, captureScreenshots } = require('./screenshots');
@@ -131,6 +132,10 @@ class A11yCoreBuilderBase {
     // Fetch the style sheets the page can't read, for core to read instead.
     this._fetchStyleSheets = true;
     this._screenshotScan = null;
+    // .conditions(): the conditions to scan the page under after the default.
+    this._conditions = null;
+    // While a scan under a condition runs, its label: screenshots name it.
+    this._screenshotCondition = null;
   }
 
   /**
@@ -542,6 +547,61 @@ class A11yCoreBuilderBase {
   frames(enabled = true) {
     this._scanFrames = !!enabled;
     return this;
+  }
+
+  /**
+   * Also scan the page under each condition, after scanning it as it is:
+   * `{ colorScheme: 'light' | 'dark' }`, `{ width: px }` (the viewport's
+   * width in CSS pixels, its height kept), or both, such as
+   * `[{ colorScheme: 'dark' }, { width: 320 }]`. analyze() then returns one
+   * result merged from the scans (mergeConditionResults()): a rule's
+   * outcome is its worst across them, and each occurrence lists the
+   * `conditions` it appeared under ('default' for the page as it was).
+   * The viewport and color scheme are put back afterwards. Not combined
+   * with .frames(true) yet. An empty list or null turns it off.
+   * @param {Array<{ colorScheme?: 'light'|'dark', width?: number }>|null} list
+   */
+  conditions(list) {
+    this._conditions = readConditions(list, 'A11yCoreBuilder.conditions()');
+    return this;
+  }
+
+  /**
+   * Runs `scan()` as the page is, then once under each condition, and
+   * merges the results; for a subclass's Promise-based analyze() to call
+   * when .conditions() was given. The driver work is the subclass's:
+   * `save()` resolves to whatever `restore(state)` needs to put the page
+   * back, and `apply(condition)` sets one condition's color scheme and
+   * width. `restore` runs even when a scan throws. Throws when
+   * .frames(true) is also set.
+   * @param {() => Promise<object>} scan
+   * @param {{ save: () => Promise<*>, apply: (condition: object) => Promise<void>, restore: (state: *) => Promise<void> }} driver
+   */
+  async _scanUnderConditions(scan, { save, apply, restore }) {
+    this._assertConditionsAlone();
+    const runs = [{ condition: 'default', result: await scan() }];
+    const state = await save();
+    try {
+      for (const condition of this._conditions) {
+        await apply(condition);
+        this._screenshotCondition = conditionLabel(condition);
+        try {
+          runs.push({ condition: this._screenshotCondition, result: await scan() });
+        } finally {
+          this._screenshotCondition = null;
+        }
+      }
+    } finally {
+      await restore(state);
+    }
+    return mergeConditionResults(runs);
+  }
+
+  /** Throws when .conditions() and .frames(true) are both set, which can't be combined yet. */
+  _assertConditionsAlone() {
+    if (this._conditions && this._scanFrames) {
+      throw new Error('A11yCoreBuilder: .conditions() and .frames(true) can\'t be combined yet; scan the frames and the conditions in two analyze() calls.');
+    }
   }
 
   /**

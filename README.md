@@ -171,6 +171,18 @@ assert.deepStrictEqual(
 );
 ```
 
+### Scans under conditions: `conditions(list)` and `mergeConditionResults(runs)`
+
+A page can fail differently in dark mode or at phone width: text that reads well on white fails contrast on a dark background, and a control big enough at 1280 pixels shrinks at 320. **`conditions([{ colorScheme: 'dark' }, { width: 320 }])`** asks a binding to scan the page as it is, then under each condition (a color scheme, a viewport width in CSS pixels, or both), and to put the viewport and scheme back afterwards. A condition with anything else, or a value that isn't one, throws a `TypeError`.
+
+A binding's `analyze()` calls **`_scanUnderConditions(scan, { save, apply, restore })`** with its own driver steps: `save()` resolves to what `restore(state)` needs, `apply(condition)` sets the scheme and width, and `restore` runs even when a scan throws. It refuses `.frames(true)` with conditions for now. It returns **`mergeConditionResults()`** of the scans, one result:
+
+- a rule's outcome is its worst across the scans (`fail`, `cantTell`, `pass`, `notApplicable`), so a contrast failure only in dark mode fails the rule;
+- an occurrence is kept once per element, rule and reason code, with the `conditions` it appeared under (`['default', 'dark']`), which `formatFailures()` prints as `seen in: default, dark`;
+- `conditionRuns` lists each scan's condition and `engine.environment`.
+
+`formatFailures()`, `getGatingFailures()` and the test matchers read it as any result. A picture taken by `.screenshots()` under a condition has the condition in its file name, so it doesn't overwrite the default scan's. `readConditions()` and `conditionLabel()` (`'dark'`, `'width 320'`, `'dark, width 320'`) are exported for bindings that run their own loop, as Cypress does.
+
 ### Rule and tag lists
 
 `withTags()`/`disableTags()`/`withRules()`/`disableRules()` take a string or an array of strings, and throw a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call for anything else (`undefined` from a missing config value, an empty string). Since core 1.10.0 the scan itself throws `INVALID_RUN_ONLY` when none of the rule IDs, or none of the tags, in an include list is one it knows, and warns about an unknown one beside known ones.
