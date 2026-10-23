@@ -571,16 +571,19 @@ class A11yCoreBuilderBase {
    * merges the results; for a subclass's Promise-based analyze() to call
    * when .conditions() was given. The driver work is the subclass's:
    * `save()` resolves to whatever `restore(state)` needs to put the page
-   * back, and `apply(condition)` sets one condition's color scheme and
-   * width. `restore` runs even when a scan throws. Throws when
+   * back, and is called before the first scan, so it can refuse a
+   * condition the driver can't set; `apply(condition)` sets one condition's
+   * color scheme and width. `restore` runs even when a scan throws. Throws when
    * .frames(true) is also set.
    * @param {() => Promise<object>} scan
    * @param {{ save: () => Promise<*>, apply: (condition: object) => Promise<void>, restore: (state: *) => Promise<void> }} driver
    */
   async _scanUnderConditions(scan, { save, apply, restore }) {
     this._assertConditionsAlone();
-    const runs = [{ condition: 'default', result: await scan() }];
+    // Saved first, so a condition the driver can't set is refused before
+    // any scan.
     const state = await save();
+    const runs = [{ condition: 'default', result: await scan() }];
     try {
       for (const condition of this._conditions) {
         await apply(condition);
