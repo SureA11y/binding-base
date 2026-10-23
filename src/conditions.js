@@ -74,7 +74,8 @@ function occurrenceKey(ruleId, occurrence) {
  * outcome is its worst across the scans (fail, cantTell, pass,
  * notApplicable), so a rule failing only in dark mode fails; its
  * occurrences are merged, one per element, rule and reason code, each
- * listing the `conditions` it appeared under, in run order. A rule a scan
+ * listing the `conditions` it appeared under, in run order. A rule that
+ * failed or asked keeps only the occurrences of the scans where it did. A rule a scan
  * left out (reportOnly()) is taken from the scans that have it. Composite
  * results take the worst one's. `conditionRuns` lists each scan's condition
  * and `engine.environment`.
@@ -103,17 +104,24 @@ function mergeConditionResults(runs) {
         const key = occurrenceKey(check.ruleId, occurrence);
         const seen = byKey.get(key);
         if (seen) {
-          if (!seen.conditions.includes(condition)) seen.conditions.push(condition);
+          if (!seen.occurrence.conditions.includes(condition)) seen.occurrence.conditions.push(condition);
+          seen.rank = Math.max(seen.rank, rank(check.outcome));
         } else {
-          byKey.set(key, { ...occurrence, conditions: [condition] });
+          byKey.set(key, { occurrence: { ...occurrence, conditions: [condition] }, rank: rank(check.outcome) });
         }
       }
     }
   }
-  const checksResults = [...checks.values()].map((check) => ({
-    ...check,
-    occurrences: [...occurrencesByRule.get(check.ruleId).values()]
-  }));
+  // A rule that failed or asked somewhere keeps only the occurrences of the
+  // scans where it did: a passing scan's summary occurrence ("All text meets
+  // the minimum contrast") isn't one of its findings.
+  const checksResults = [...checks.values()].map((check) => {
+    const merged = rank(check.outcome);
+    const kept = [...occurrencesByRule.get(check.ruleId).values()].filter(
+      (entry) => merged < OUTCOME_RANK.cantTell || entry.rank >= OUTCOME_RANK.cantTell
+    );
+    return { ...check, occurrences: kept.map((entry) => entry.occurrence) };
+  });
 
   let rulesResults = base.rulesResults;
   if (Array.isArray(base.rulesResults)) {
