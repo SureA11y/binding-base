@@ -157,6 +157,21 @@ export class A11yCoreBuilderBase {
    */
   fetchStyleSheets(enabled?: boolean): this;
   frames(enabled?: boolean): this;
+  /**
+   * Also scan the page under each condition after scanning it as it is;
+   * analyze() returns one merged result (mergeConditionResults()). Not
+   * combined with frames(true) yet. null or [] turns it off.
+   */
+  conditions(list: ReadonlyArray<ScanCondition> | null): this;
+  /** For a subclass's analyze(): scan as the page is, then under each condition, and merge. */
+  _scanUnderConditions<T>(
+    scan: () => Promise<T>,
+    driver: {
+      save: () => Promise<unknown>;
+      apply: (condition: ScanCondition) => Promise<void>;
+      restore: (state: unknown) => Promise<void>;
+    }
+  ): Promise<T & { conditionRuns: ConditionRun[] }>;
   /** The rules a scan with this builder will run, from core's getChecksForRunOnly(); in Node, no page needed (@surea11y/core 1.12.0 and later). */
   plannedChecks(): PlannedCheck[];
   /** The criteria a scan with this builder will report in rulesResults, from core's getRulesForRunOnly() (@surea11y/core 1.12.0 and later). */
@@ -297,6 +312,34 @@ export const SEVERITIES: ReadonlyArray<Severity>;
  * `surea11y scan --fail-on-severity` counts them. Throws a TypeError for a
  * level that is not a severity.
  */
+/** A condition to scan a page under: a color scheme, a viewport width in CSS pixels, or both. */
+export interface ScanCondition {
+  colorScheme?: 'light' | 'dark';
+  width?: number;
+}
+
+/** One scan of a merged result: its condition's label ('default' for the page as it was) and environment. */
+export interface ConditionRun {
+  condition: string;
+  environment: Record<string, unknown> | null;
+}
+
+/** Checks a list of conditions as .conditions() takes it; null for none. Throws a TypeError for a bad one. */
+export function readConditions(list: unknown, where?: string): ScanCondition[] | null;
+
+/** A condition's label, as occurrences list it: 'dark', 'width 320', 'dark, width 320'; 'default' for null. */
+export function conditionLabel(condition: ScanCondition | null): string;
+
+/**
+ * One result from the scans of a page under several conditions, the default
+ * scan first: each rule's worst outcome, occurrences merged by element, rule
+ * and reason code with the `conditions` they appeared under, and
+ * `conditionRuns`.
+ */
+export function mergeConditionResults<T extends { checksResults: ReadonlyArray<object> }>(
+  runs: ReadonlyArray<{ condition: string; result: T }>
+): T & { conditionRuns: ConditionRun[] };
+
 export function getGatingFailures<T extends { outcome: string; severity?: string }>(
   input: { checksResults: ReadonlyArray<T> } | ReadonlyArray<T>,
   opts?: { failOnSeverity?: Severity }
