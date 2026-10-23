@@ -120,7 +120,10 @@ test('builder: .conditions() checks its list, and _scanUnderConditions() scans, 
       return { checksResults: [{ ruleId: 'r', outcome: current === 'dark' ? 'fail' : 'pass', occurrences: current === 'dark' ? [occ('p', 'X')] : [] }] };
     },
     {
-      save: async () => 'saved',
+      save: async () => {
+        calls.push('save');
+        return 'saved';
+      },
       apply: async (c) => {
         current = conditionLabel(c);
         calls.push(`apply ${current}`);
@@ -132,6 +135,7 @@ test('builder: .conditions() checks its list, and _scanUnderConditions() scans, 
     }
   );
   assert.deepStrictEqual(calls, [
+    'save',
     'scan default (pictures: default)',
     'apply dark',
     'scan dark (pictures: dark)',
@@ -165,4 +169,30 @@ test('builder: restore runs when a scan throws, and .frames(true) with .conditio
     /\.conditions\(\) and \.frames\(true\) can't be combined yet/
   );
   assert.strictEqual(new StubBuilder().conditions(null)._conditions, null);
+});
+
+test('builder: a condition the driver refuses in save() stops before any scan', async () => {
+  const builder = new StubBuilder().conditions([{ colorScheme: 'dark' }]);
+  let scans = 0;
+  let restored = false;
+  await assert.rejects(
+    builder._scanUnderConditions(
+      async () => {
+        scans += 1;
+        return { checksResults: [] };
+      },
+      {
+        save: async () => {
+          throw new Error('no color scheme here');
+        },
+        apply: async () => {},
+        restore: async () => {
+          restored = true;
+        }
+      }
+    ),
+    /no color scheme here/
+  );
+  assert.strictEqual(scans, 0);
+  assert.strictEqual(restored, false);
 });
