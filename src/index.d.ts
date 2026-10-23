@@ -263,7 +263,27 @@ export function getScanGaps(result: ScanResultLike): ScanGap[];
  * scan gaps and the engine version. Throws a TypeError for anything else
  * than a result or a checksResults array.
  */
-export function formatFailures(input: ScanResultLike | ReadonlyArray<object>, opts?: { outcomes?: Outcome[] }): string;
+export function formatFailures(
+  input: ScanResultLike | ReadonlyArray<object>,
+  opts?: { outcomes?: Outcome[]; failOnSeverity?: Severity }
+): string;
+
+/** A rule result's severity, least to most severe in SEVERITIES. */
+export type Severity = 'minor' | 'moderate' | 'serious' | 'critical';
+
+/** The four severities, least to most severe. */
+export const SEVERITIES: ReadonlyArray<Severity>;
+
+/**
+ * The failing rule results that fail a test: every `fail`, or with
+ * `failOnSeverity` only those whose severity is that level or above, as
+ * `surea11y scan --fail-on-severity` counts them. Throws a TypeError for a
+ * level that is not a severity.
+ */
+export function getGatingFailures<T extends { outcome: string; severity?: string }>(
+  input: { checksResults: ReadonlyArray<T> } | ReadonlyArray<T>,
+  opts?: { failOnSeverity?: Severity }
+): T[];
 
 /** Where an occurrence or a margin points: what queryOccurrenceElement() and formatOccurrenceLocation() read. */
 export interface OccurrenceLocation {

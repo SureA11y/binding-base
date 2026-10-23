@@ -5,6 +5,8 @@ import {
   A11yCoreBuilderBase,
   EngineError,
   createInPageScan,
+  getGatingFailures,
+  SEVERITIES,
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
@@ -46,6 +48,9 @@ scan(null, contextSelector, engineOptions, runOnly);
 
 const filtered: ScanResult = builder._applyReportOnly(scanned);
 const message: string = formatFailures(filtered) + formatFailures(filtered.checksResults, { outcomes: ['fail'] });
+const gating = getGatingFailures(scanned, { failOnSeverity: 'serious' });
+const gatingIds: string[] = gating.map((c) => c.ruleId);
+const marked: string = formatFailures(scanned, { failOnSeverity: SEVERITIES[2] });
 
 builder.logger((gap, frameResult) => {
   const line: string = `${frameResult.url ?? ''}: ${gap.message}`;
