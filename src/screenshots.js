@@ -398,6 +398,9 @@ async function captureScreenshots(builder, result, frame, framePath) {
     frameKey = framePath.map((_, i) => `frame-${i}`);
   }
 
+  // A scan under a condition (.conditions()) names its pictures apart, so
+  // the default scan's of the same element aren't overwritten.
+  if (builder._screenshotCondition) frameKey = frameKey.concat(`condition:${builder._screenshotCondition}`);
   const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey });
   for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
 
