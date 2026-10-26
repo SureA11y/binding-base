@@ -165,3 +165,9 @@ test('_warnScanGaps(): a binding that can\'t load core gives the hook codes itse
   new InBrowser().logger((entry) => seen.push(entry.kind))._warnScanGaps(result({ layout: true }, KEYBOARD), 'x');
   assert.deepStrictEqual(seen, ['listener-hook', 'live-region-hook']);
 });
+
+test('formatFailures(result, { hookReasonCodes }): the hook notes where core can\'t be loaded', () => {
+  const text = formatFailures(result({ layout: true }, KEYBOARD), { hookReasonCodes: HOOK_CODES });
+  assert.match(text, /judged without seeing the listeners the page adds from script/);
+  assert.match(text, /judged without a record of what the page's live regions were given/);
+});
