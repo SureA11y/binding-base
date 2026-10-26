@@ -138,6 +138,13 @@ function headLine(n, check, occurrence, text, level) {
   return `${n}) ${check.ruleId} (${tag}): ${text}`;
 }
 
+// How often a lean of its kind was right where core counted it against
+// cases with known answers (lean.measured, @surea11y/core 1.14.0 and later).
+function measuredText(m) {
+  if (!m || !Number.isInteger(m.agreed) || !Number.isInteger(m.cases) || m.cases < 1) return '';
+  return ` (right in ${m.agreed} of ${m.cases} ${m.cases === 1 ? 'known case' : 'known cases'})`;
+}
+
 // What a question says beyond its summary: which way it leans and why, what
 // could make that wrong, what would settle it, and, when asked, the steps.
 function questionLines(check, occurrence, howToCheck) {
@@ -146,7 +153,7 @@ function questionLines(check, occurrence, howToCheck) {
   if (group !== 'leanFail' && group !== 'leanPass' && group !== 'open') return lines;
   const lean = occurrence.lean || {};
   if (group !== 'open' && typeof lean.why === 'string' && lean.why) {
-    lines.push(`   ${group === 'leanFail' ? 'Why it likely fails' : 'Why it likely passes'}: ${lean.why}`);
+    lines.push(`   ${group === 'leanFail' ? 'Why it likely fails' : 'Why it likely passes'}: ${lean.why}${measuredText(lean.measured)}`);
   }
   if (group !== 'open' && typeof lean.caution === 'string' && lean.caution) lines.push(`   Caution: ${lean.caution}`);
   const needed = occurrence.uncertainty && occurrence.uncertainty.needed;
