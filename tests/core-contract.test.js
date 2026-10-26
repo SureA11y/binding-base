@@ -494,3 +494,24 @@ test('core contract: formatFailures() lists a real result in review order, with 
     page.close();
   }
 });
+
+test('core contract: a real click handler judged without the listener hook is a listener-hook note, and not once it ran', { skip: core.listenerHookScript ? false : 'needs @surea11y/core 1.14.0 (listenerHookScript)' }, () => {
+  const html = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+    '<span role="button" tabindex="0" onclick="void save()">Save</span></main></body></html>';
+  const builder = new A11yCoreBuilderBase().withRules('click-handler-keyboard-operable');
+  const without = pageScan(html);
+  const hooked = pageScan(html);
+  try {
+    const plain = without.scan(builder);
+    const [note] = getScanNotes(plain).filter((n) => n.kind === 'listener-hook');
+    assert.ok(note, JSON.stringify(getScanNotes(plain)));
+    assert.deepStrictEqual(note.rules, ['click-handler-keyboard-operable']);
+    hooked.window.eval(core.listenerHookScript({ early: true }));
+    const result = hooked.scan(builder);
+    assert.strictEqual(result.engine.environment.listenerHook, 'early');
+    assert.deepStrictEqual(getScanNotes(result).filter((n) => n.kind === 'listener-hook'), []);
+  } finally {
+    without.close();
+    hooked.close();
+  }
+});

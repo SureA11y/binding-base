@@ -100,38 +100,57 @@ test('_warnScanGaps(): a logger() receives the internals note, told apart by kin
   assert.deepStrictEqual(seen, ['context-partly-not-found', 'internals-hook']);
 });
 
-// Questions the listener hook (core 1.14.0) would let core settle.
-const LISTENED = [
+test('getScanNotes(): forced colors the page\'s own CSS reacts to say so', () => {
+  const [note] = getScanNotes(result({ layout: true, forcedColors: 'active', forcedColorsCss: true }));
+  assert.strictEqual(note.kind, 'forced-colors');
+  assert.strictEqual(note.pageCss, true);
+  assert.match(note.message, /its own CSS reacts to them/);
+});
+
+// core's HOOK_REASON_CODES, in part, as a caller in a browser bundle passes them.
+const HOOK_CODES = {
+  internals: [],
+  listener: [
+    { ruleId: 'click-handler-keyboard-operable', reasonCode: 'CLICK_HANDLER_NO_KEY_LISTENER', effect: 'reports' },
+    { ruleId: 'click-handler-keyboard-operable', reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER', effect: 'leans' },
+    { ruleId: 'click-handler-keyboard-operable', reasonCode: 'CLICK_HANDLER_CONTROL_NOT_FOCUSABLE', effect: 'decides' }
+  ],
+  liveRegion: [{ ruleId: 'live-region-announcements', reasonCode: 'LIVE_REGION_HIDDEN', effect: 'leans' }]
+};
+const KEYBOARD = [
   question('click-handler-keyboard-operable', 'CLICK_HANDLER_NO_KEY_HANDLER', '#save'),
-  question('mouse-only-event-handlers', 'MOUSE_ONLY_HANDLER_NO_KEYBOARD_EQUIVALENT', '#tip')
+  { ...question('click-handler-keyboard-operable', 'CLICK_HANDLER_CONTROL_NOT_FOCUSABLE', '#open'), outcome: 'fail' },
+  question('live-region-announcements', 'LIVE_REGION_HIDDEN', '#status')
 ];
 
-test('getScanNotes(): click and pointer questions without the listener hook, counted by element', () => {
-  const notes = getScanNotes(result({ layout: true }, LISTENED));
-  assert.deepStrictEqual(notes.map((n) => [n.kind, n.hook, n.elementCount]), [['listener-hook', 'none', 2]]);
-  assert.match(notes[0].message, /^2 elements were asked about because the scan could not see the key or focus listeners a page adds from script\. Install the listener hook before the page loads \(installListenerHook\(\) in your binding\)/);
+test('getScanNotes(): findings a hook decides or leans, judged without it', () => {
+  const notes = getScanNotes(result({ layout: true }, KEYBOARD), { hookReasonCodes: HOOK_CODES });
+  assert.deepStrictEqual(notes.map((n) => [n.kind, n.hook, n.findingCount, n.rules]), [
+    ['listener-hook', 'none', 2, ['click-handler-keyboard-operable']],
+    ['live-region-hook', 'none', 1, ['live-region-announcements']]
+  ]);
+  assert.match(notes[0].message, /^2 findings \(click-handler-keyboard-operable\) were judged without seeing the listeners the page adds from script\. Install the listener hook before the page loads \(listenerHookScript\(\) from @surea11y\/core\)/);
+  assert.match(notes[1].message, /^1 finding \(live-region-announcements\) was judged without a record/);
 });
 
-test('getScanNotes(): a late listener hook says so; an early one leaves no note', () => {
-  const [late] = getScanNotes(result({ layout: true, listenerHook: 'late' }, [LISTENED[0]]));
-  assert.strictEqual(late.hook, 'late');
-  assert.match(late.message, /^1 element was asked about .*installed after the page's scripts ran\./);
-  assert.deepStrictEqual(getScanNotes(result({ layout: true, listenerHook: 'early' }, LISTENED)), []);
+test('getScanNotes(): a late hook says so, an early one leaves no note, and a code it only reports counts for nothing', () => {
+  const late = getScanNotes(result({ layout: true, listenerHook: 'late', liveRegionHook: 'early' }, KEYBOARD), { hookReasonCodes: HOOK_CODES });
+  assert.deepStrictEqual(late.map((n) => [n.kind, n.hook]), [['listener-hook', 'late']]);
+  assert.match(late[0].message, /, since the listener hook was installed after the page's scripts ran\./);
+  const reported = [question('click-handler-keyboard-operable', 'CLICK_HANDLER_NO_KEY_LISTENER', '#a')];
+  assert.deepStrictEqual(getScanNotes(result({ layout: true }, reported), { hookReasonCodes: HOOK_CODES }), []);
+  // A passing rule's occurrence is no finding.
+  const passed = [{ ...KEYBOARD[0], outcome: 'pass' }];
+  assert.deepStrictEqual(getScanNotes(result({ layout: true }, passed), { hookReasonCodes: HOOK_CODES }), []);
 });
 
-test('getScanNotes(): other click-handler questions are no listener note', () => {
-  const other = question('click-handler-keyboard-operable', 'CLICK_HANDLER_NOT_IN_TAB_ORDER', '#a');
-  assert.deepStrictEqual(getScanNotes(result({ layout: true }, [other])), []);
-});
-
-test('_warnScanGaps(): the internals and listener notes, each once per builder', () => {
+test('_warnScanGaps(): each hook note once per builder', () => {
   const b = new A11yCoreBuilderBase();
-  const page = result({ layout: true }, ASKED.concat(LISTENED));
   const lines = capturingWarn(() => {
-    b._warnScanGaps(page, '@surea11y/puppeteer');
-    b._warnScanGaps({ ...page, url: 'https://example.com/frame' }, '@surea11y/puppeteer');
+    for (let i = 0; i < 2; i++) b._warnScanGaps(result({ layout: false }, ASKED.concat(KEYBOARD)), 'x');
   });
-  assert.strictEqual(lines.length, 2);
-  assert.match(lines[0], /custom elements were asked about/);
-  assert.match(lines[1], /2 elements were asked about because the scan could not see/);
+  const core = require('@surea11y/core');
+  // The hook notes come from the core installed beside this package.
+  const expected = core.HOOK_REASON_CODES ? 3 : 1;
+  assert.strictEqual(lines.length, expected, lines.join('\n'));
 });
