@@ -715,7 +715,8 @@ class A11yCoreBuilderBase {
     // Each hook note, said once per builder (one builder per scan, so once
     // per scan, whichever frame asked first): it is advice about how the
     // page was loaded, the same for every frame.
-    const notes = getScanNotes(result).filter((n) => HOOK_NOTES.includes(n.kind) && !this._saidNotes.has(n.kind));
+    const notes = getScanNotes(result, { hookReasonCodes: this._hookReasonCodes() })
+      .filter((n) => HOOK_NOTES.includes(n.kind) && !this._saidNotes.has(n.kind));
     for (const note of notes) this._saidNotes.add(note.kind);
     for (const entry of gaps.concat(notes)) {
       if (this._logger) {
@@ -725,6 +726,18 @@ class A11yCoreBuilderBase {
         console.warn(`${source}${where}: ${entry.message}`);
       }
     }
+  }
+
+  /**
+   * Core's HOOK_REASON_CODES, for the hook notes `_warnScanGaps()` says, or
+   * null to have getScanNotes() load them from the core installed beside the
+   * binding. A binding whose code runs in a browser, where this package can't
+   * load core (Cypress), returns them from its own import of
+   * `@surea11y/core/how-to-check`.
+   * @returns {object|null}
+   */
+  _hookReasonCodes() {
+    return null;
   }
 
   /**
