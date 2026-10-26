@@ -71,9 +71,17 @@ for (const gap of getScanGaps(result)) {
 
 for (const note of getScanNotes(result)) {
   if (note.kind === 'internals-hook') note.hook.toUpperCase();
-  else if (note.kind === 'listener-hook') note.elementCount.toFixed();
+  else if (note.kind === 'listener-hook' || note.kind === 'live-region-hook') note.rules.concat(String(note.findingCount));
   else note.message.toUpperCase();
 }
+// core's HOOK_REASON_CODES (1.14.0 and later) has this shape.
+const hookReasonCodes = { listener: [{ ruleId: 'click-handler-keyboard-operable', reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER', effect: 'leans' as const }] };
+const hookNotes: number = getScanNotes(result, { hookReasonCodes }).length;
+const review: string = formatFailures(result, { outcomes: ['fail', 'leanFail'], howToCheck: true });
+// @ts-expect-error a group of its own, not a name
+formatFailures(result, { outcomes: ['likelyFail'] });
+const stepped: ScanResult = builder._addHowToCheck(result);
+void [hookNotes, review, stepped];
 
 const occurrence = result.checksResults[0].occurrences[0];
 const element: Element | null = queryOccurrenceElement(occurrence.selector, occurrence.shadowHostSelectors, document);

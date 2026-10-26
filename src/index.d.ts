@@ -9,6 +9,13 @@ export type Outcome = 'pass' | 'fail' | 'cantTell' | 'notApplicable';
 
 export const VALID_OUTCOMES: Outcome[];
 
+/**
+ * Where an occurrence goes in a review, among the questions: 'leanFail' or
+ * 'leanPass' where its lean points that way (@surea11y/core 1.14.0 and
+ * later), 'open' where only a person can answer it.
+ */
+export type ReviewGroup = 'leanFail' | 'leanPass' | 'open';
+
 export function canReconstructAsFunction(src: string): boolean;
 export function toReconstructableSource(fn: (...args: unknown[]) => unknown): string;
 
@@ -183,7 +190,12 @@ export class A11yCoreBuilderBase {
   _packScript(): string | null;
   /** Sends each of a frame's scan gaps to the logger(), or prints it with console.warn as `<source> (<url>): <message>`. */
   _warnScanGaps(result: unknown, source: string): void;
+  /** The last step of each frame's result: adds the steps for undecided findings (_addHowToCheck()), then filters per reportOnly(). */
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
+  /** A copy of one frame's result whose undecided findings carry howToCheck, from core's addHowToCheck() (1.14.0 and later); `result` as given otherwise. */
+  _addHowToCheck<T>(result: T): T;
+  /** The installed core's addHowToCheck(), or null with an older core or none that can be loaded. */
+  _coreAddHowToCheck(): ((result: any, options?: { packs?: unknown[] }) => any) | null;
   /** The screenshots step, once per scanned frame, after the scan and before reportOnly(); does nothing unless screenshots() was called. */
   _captureScreenshots<T>(result: T, frame: unknown, framePath?: FramePathStep[]): Promise<T>;
   /** Implemented by a binding that takes screenshots: run `fn(...args)` in `frame` and resolve to its result. */
@@ -248,10 +260,14 @@ export interface ScanResultLike {
     environment?: {
       /** Whether the page was shown in forced colors (@surea11y/core 1.12.0 and later). */
       forcedColors?: 'active' | 'none';
+      /** Under forced colors, whether the page's own CSS reacted to them (@surea11y/core 1.14.0 and later). */
+      forcedColorsCss?: true;
       /** Whether the internals hook ran in the page, and when (@surea11y/core 1.12.0 and later). */
       internalsHook?: 'early' | 'late';
       /** Whether the listener hook ran in the page, and when (@surea11y/core 1.14.0 and later). */
       listenerHook?: 'early' | 'late';
+      /** Whether the live-region hook ran in the page, and when (@surea11y/core 1.14.0 and later). */
+      liveRegionHook?: 'early' | 'late';
     };
   };
 }
@@ -263,24 +279,24 @@ export type ScanGap =
   | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } };
 
 export type ScanNote =
-  | { kind: 'forced-colors'; message: string }
-  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number }
-  | { kind: 'listener-hook'; message: string; hook: 'none' | 'late'; elementCount: number };
-
-/** What a reader should know about how the page was scanned: forced colors, custom elements the internals hook would have let the engine read, and elements whose keyboard equivalent the listener hook would have let it see. Throws a TypeError for anything but one result. */
-export function getScanNotes(result: ScanResultLike): ScanNote[];
+  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean }
+): string;
 
 /** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
 export function getScanGaps(result: ScanResultLike): ScanGap[];
 
 /**
- * A failure message for an assertion. Given a whole result, also lists its
- * scan gaps and the engine version. Throws a TypeError for anything else
- * than a result or a checksResults array.
+ * A failure message for an assertion: one entry per occurrence, by its own
+ * outcome, failures first, then the questions that lean fail, lean pass,
+ * and those only a person can answer. Given a whole result, also lists its
+ * scan gaps, notes and the engine version. `outcomes` picks occurrences by
+ * outcome or review group (default ['fail', 'cantTell']); `howToCheck` lists
+ * each question's steps. Throws a TypeError for anything else than a result
+ * or a checksResults array, or an outcome it doesn't know.
  */
 export function formatFailures(
   input: ScanResultLike | ReadonlyArray<object>,
-  opts?: { outcomes?: Outcome[]; failOnSeverity?: Severity }
+  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity }
 ): string;
 
 /** A rule result's severity, least to most severe in SEVERITIES. */
@@ -289,12 +305,6 @@ export type Severity = 'minor' | 'moderate' | 'serious' | 'critical';
 /** The four severities, least to most severe. */
 export const SEVERITIES: ReadonlyArray<Severity>;
 
-/**
- * The failing rule results that fail a test: every `fail`, or with
- * `failOnSeverity` only those whose severity is that level or above, as
- * `surea11y scan --fail-on-severity` counts them. Throws a TypeError for a
- * level that is not a severity.
- */
 /** A condition to scan a page under: a color scheme, a viewport width in CSS pixels, or both. */
 export interface ScanCondition {
   colorScheme?: 'light' | 'dark';
@@ -323,6 +333,12 @@ export function mergeConditionResults<T extends { checksResults: ReadonlyArray<o
   runs: ReadonlyArray<{ condition: string; result: T }>
 ): T & { conditionRuns: ConditionRun[] };
 
+/**
+ * The failing rule results that fail a test: every `fail`, or with
+ * `failOnSeverity` only those whose severity is that level or above, as
+ * `surea11y scan --fail-on-severity` counts them. Throws a TypeError for a
+ * level that is not a severity.
+ */
 export function getGatingFailures<T extends { outcome: string; severity?: string }>(
   input: { checksResults: ReadonlyArray<T> } | ReadonlyArray<T>,
   opts?: { failOnSeverity?: Severity }
