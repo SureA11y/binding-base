@@ -138,7 +138,7 @@ builder.withPacks(policy).options({ profile: 'acme-policy' });
 
 ### `formatFailures(resultOrChecks, { outcomes?, howToCheck? })`
 
-Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, each read by its own outcome (`occurrenceOutcome` where the rule gives one), since a rule's findings can sit in different tiers: a failing rule's questions are questions, and `{ outcomes: ['fail'] }` leaves them out. The entries come in the order a review takes, the groups core's HTML report uses: failures, then the questions that lean fail, those that lean pass, and those only a person can answer (a lean is core 1.14.0's). A question says so beside its severity, which way it leans and why, the lean's caution, and what would settle it; with `howToCheck: true`, also the steps that answer it:
+Given `checksResults`, it lists one entry per `fail`/`cantTell` occurrence, each read by its own outcome (`occurrenceOutcome` where the rule gives one), since a rule's findings can sit in different tiers: a failing rule's questions are questions, and `{ outcomes: ['fail'] }` leaves them out. The entries come in the order a review takes, the groups core's HTML report uses: failures, then the questions that lean fail, those that lean pass, and those only a person can answer (a lean is core 1.14.0's). A question says so beside its severity, which way it leans and why (with how often a lean of its kind was right, `(right in 4 of 4 known cases)`, where core counted it against the ACT test cases: `lean.measured`), the lean's caution, and what would settle it; with `howToCheck: true`, also the steps that answer it:
 
 ```
 1) img-alt-present (serious): This <img> has no alt attribute.
@@ -323,6 +323,14 @@ What a binding's docs should say about it, in its own words:
 - **What a page can notice.** `addEventListener`, `removeEventListener` and the `on…` property setters are no longer native code, and a global symbol (`Symbol.for('surea11y.listeners')`) holds the record. It is for test and audit runs, not production.
 
 The advice needs no other code in a binding that calls the shared `_warnScanGaps()`: it prints the `listener-hook` note once per scan, naming the installer, as it does the `internals-hook` note. Core's [`BINDING_AUTHORS_GUIDE.md`](https://github.com/SureA11y/core/blob/main/docs/BINDING_AUTHORS_GUIDE.md) shows the three hooks for each driver and tables what each changes.
+
+### The live-region hook
+
+A scan sees the page at one moment, so it can't tell how a live region was filled while the test ran. `liveRegionHookScript()` from `@surea11y/core` (1.14.0 and later) returns a script that, run before the page's own scripts, records each text a shown live region is given from the load event on, and the ways of filling one that are commonly not announced, which core's `live-region-announcements` (WCAG 4.1.3) then asks about. See core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#seeing-what-live-regions-are-given-the-live-region-hook).
+
+Each binding offers it as it offers the other two hooks, a static **`A11yCoreBuilder.installLiveRegionHook(target)`** called before navigating, and a static **`A11yCoreBuilder.announcements(target, { includeBehindModal? })`** that reads what the page made available to announce. That method returns **`_announcementsIn(frame, { includeBehindModal? })`**, which runs core's `getAnnouncements({ selectors: true })` in the frame through `_evaluateInFrame()`, so each entry names its region by `selector` (and `shadowHostSelectors`) rather than holding an element no driver can return. It resolves to `[{ text, politeness, time, order, behindModal, selector }]`, or `null` without the hook, and needs core 1.14.0 and a binding that implements `_evaluateInFrame()`. A test can click Save and expect `'Saved'` among the texts.
+
+What a binding's docs should say about it: it records what the page made available to announce, not what a screen reader said; the result records it in `engine.environment.liveRegionHook`; and a global symbol (`Symbol.for('surea11y.liveRegions')`) holds the record, so it is for test and audit runs, not production.
 
 ### Screenshots of failing elements
 

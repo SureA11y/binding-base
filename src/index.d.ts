@@ -194,6 +194,13 @@ export class A11yCoreBuilderBase {
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
   /** A copy of one frame's result whose undecided findings carry howToCheck, from core's addHowToCheck() (1.14.0 and later); `result` as given otherwise. */
   _addHowToCheck<T>(result: T): T;
+  /**
+   * What the page's live regions were given (core's getAnnouncements({ selectors: true }), 1.14.0 and later),
+   * run in `frame` through _evaluateInFrame(); null without the live-region hook.
+   */
+  _announcementsIn(frame: unknown, options?: { includeBehindModal?: boolean }): Promise<LocatedAnnouncement[] | null>;
+  /** The installed core's getAnnouncements(), or null with an older core or none that can be loaded. */
+  _coreGetAnnouncements(): ((...args: any[]) => unknown) | null;
   /** The installed core's addHowToCheck(), or null with an older core or none that can be loaded. */
   _coreAddHowToCheck(): ((result: any, options?: { packs?: unknown[] }) => any) | null;
   /** The screenshots step, once per scanned frame, after the scan and before reportOnly(); does nothing unless screenshots() was called. */
@@ -279,8 +286,39 @@ export type ScanGap =
   | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } };
 
 export type ScanNote =
-  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean }
-): string;
+  | { kind: 'forced-colors'; message: string; pageCss?: true }
+  | { kind: 'internals-hook'; message: string; hook: 'none' | 'late'; elementCount: number }
+  | { kind: 'listener-hook' | 'live-region-hook'; message: string; hook: 'none' | 'late'; findingCount: number; rules: string[] };
+
+/** A text a live region was given, as _announcementsIn() returns it: the region named by a selector. */
+export interface LocatedAnnouncement {
+  text: string;
+  politeness: 'polite' | 'assertive';
+  /** performance.now() when the hook saw it. */
+  time: number;
+  /** Its place among all the changes the page made. */
+  order: number;
+  /** Given to a region behind an open modal dialog: listed only with includeBehindModal. */
+  behindModal: boolean;
+  /** The region; null once it has left the page. */
+  selector: string | null;
+  /** The shadow hosts leading to the region, outermost first. */
+  shadowHostSelectors?: string[];
+}
+
+/** Core's HOOK_REASON_CODES, as getScanNotes() reads it. */
+export interface HookReasonCodes {
+  readonly [hook: string]: ReadonlyArray<{ readonly ruleId: string; readonly reasonCode: string; readonly effect: 'reports' | 'decides' | 'leans' }>;
+}
+
+/**
+ * What a reader should know about how the page was scanned: forced colors,
+ * custom elements the internals hook would have let the engine read, and
+ * findings the listener or live-region hook would have decided (core
+ * 1.14.0 and later, from its HOOK_REASON_CODES, or `hookReasonCodes` where
+ * core can't be loaded). Throws a TypeError for anything but one result.
+ */
+export function getScanNotes(result: ScanResultLike, options?: { hookReasonCodes?: HookReasonCodes | null }): ScanNote[];
 
 /** What a scan result says it left out; [] for a result from before @surea11y/core 1.10.0. Throws a TypeError for anything but one result. */
 export function getScanGaps(result: ScanResultLike): ScanGap[];

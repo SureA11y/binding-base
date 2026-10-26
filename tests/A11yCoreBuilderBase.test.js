@@ -538,3 +538,32 @@ test('A11yCoreBuilderBase: plannedChecks()/plannedCriteria() name the core relea
     Module._load = load;
   }
 });
+
+test('A11yCoreBuilderBase: _announcementsIn() needs a driver step and a core that has getAnnouncements()', async () => {
+  await assert.rejects(new A11yCoreBuilderBase()._announcementsIn({}), /needs _evaluateInFrame\(\)/);
+  class OlderCore extends A11yCoreBuilderBase {
+    async _evaluateInFrame() {
+      return [];
+    }
+    _coreGetAnnouncements() {
+      return null;
+    }
+  }
+  await assert.rejects(new OlderCore()._announcementsIn({}), /needs @surea11y\/core 1\.14\.0/);
+  await assert.rejects(new OlderCore()._announcementsIn({}, 'all'), TypeError);
+  await assert.rejects(new OlderCore()._announcementsIn({}, { includeBehindModal: 'yes' }), TypeError);
+  // What reaches the page: selectors, and includeBehindModal only when asked.
+  const sent = [];
+  class Recording extends A11yCoreBuilderBase {
+    async _evaluateInFrame(frame, fn, args) {
+      sent.push(args);
+      return 'not a list';
+    }
+    _coreGetAnnouncements() {
+      return function getAnnouncements() {};
+    }
+  }
+  assert.strictEqual(await new Recording()._announcementsIn({}), null);
+  await new Recording()._announcementsIn({}, { includeBehindModal: true });
+  assert.deepStrictEqual(sent, [[{ selectors: true }], [{ selectors: true, includeBehindModal: true }]]);
+});
