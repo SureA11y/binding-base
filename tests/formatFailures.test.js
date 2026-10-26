@@ -175,9 +175,9 @@ test('formatFailures(): a lean says how often a lean of its kind was right, wher
     ruleId: 'bypass-blocks-present',
     outcome: 'cantTell',
     severity: 'serious',
-    occurrences: [{ summary: 'No way past the navigation.', lean: { toward: 'fail', why: 'Navigation comes first.', measured: { agreed: 4, cases: 4, corpus: 'ACT' } } }]
+    occurrences: [{ summary: 'No way past the navigation.', lean: { toward: 'fail', why: 'Navigation comes first.', measured: { agreed: 9, cases: 10, corpus: 'ACT' } } }]
   }];
-  assert.match(formatFailures(measured), /\n {3}Why it likely fails: Navigation comes first\. \(right in 4 of 4 known cases\)$/);
+  assert.match(formatFailures(measured), /\n {3}Why it likely fails: Navigation comes first\. \(right in 9 of 10 known cases\)$/);
   measured[0].occurrences[0].lean.measured = { agreed: 1, cases: 1 };
   assert.match(formatFailures(measured), /\(right in 1 of 1 known case\)$/);
   measured[0].occurrences[0].lean.measured = { agreed: 'x', cases: 0 };
