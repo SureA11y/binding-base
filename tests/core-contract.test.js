@@ -515,3 +515,30 @@ test('core contract: a real click handler judged without the listener hook is a 
     hooked.close();
   }
 });
+
+test('core contract: _announcementsIn() reads what a real page\'s live regions were given, through a driver boundary', { skip: core.liveRegionHookScript ? false : 'needs @surea11y/core 1.14.0 (liveRegionHookScript)' }, async () => {
+  const dom = new JSDOM(
+    '<!doctype html><html lang="en"><head><title>t</title></head><body><main><div id="status" aria-live="polite"></div></main></body></html>',
+    { url: 'https://example.com/', pretendToBeVisual: true, runScripts: 'outside-only' }
+  );
+  try {
+    // A binding that runs a function in its page as a driver does: from its
+    // source, its answer copied out through JSON.
+    class PageBinding extends A11yCoreBuilderBase {
+      async _evaluateInFrame(frame, fn, args) {
+        return JSON.parse(JSON.stringify(frame.eval(`(${fn.toString()})`)(...args)));
+      }
+    }
+    const builder = new PageBinding();
+    assert.strictEqual(await builder._announcementsIn(dom.window), null, 'no hook, no list');
+    dom.window.eval(core.liveRegionHookScript({ early: true }));
+    dom.window.eval("document.getElementById('status').textContent = 'Saved';");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const said = await builder._announcementsIn(dom.window);
+    assert.deepStrictEqual(said.map((a) => [a.text, a.politeness, a.selector]), [['Saved', 'polite', '#status']]);
+    assert.ok(!('element' in said[0]));
+    await assert.rejects(builder._announcementsIn(dom.window, { behindModal: true }), TypeError);
+  } finally {
+    dom.window.close();
+  }
+});

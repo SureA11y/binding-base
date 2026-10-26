@@ -82,6 +82,8 @@ const review: string = formatFailures(result, { outcomes: ['fail', 'leanFail'], 
 formatFailures(result, { outcomes: ['likelyFail'] });
 const stepped: ScanResult = builder._addHowToCheck(result);
 void [hookNotes, review, stepped];
+const regions: Promise<Array<string | null> | undefined> = builder._announcementsIn({}).then((list) => list?.map((a) => a.selector));
+void regions;
 
 const occurrence = result.checksResults[0].occurrences[0];
 const element: Element | null = queryOccurrenceElement(occurrence.selector, occurrence.shadowHostSelectors, document);

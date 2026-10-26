@@ -532,6 +532,67 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * What the page's live regions were given, as core's live-region hook
+   * recorded it (getAnnouncements(), @surea11y/core 1.14.0 and later), for a
+   * binding's own method to return:
+   *
+   *   static announcements(page, options) {
+   *     return new A11yCoreBuilder({ page })._announcementsIn(page, options);
+   *   }
+   *
+   * Runs getAnnouncements({ selectors: true }) in `frame` through
+   * `_evaluateInFrame()`, so each entry names its region by `selector` (and
+   * `shadowHostSelectors` inside a shadow root, `null` for a region that has
+   * left the page) rather than holding an element no driver can return.
+   * Resolves to `[{ text, politeness, time, order, behindModal, selector }]`
+   * in the order the page gave them, or null where the hook isn't installed
+   * (installLiveRegionHook(), before the page loads). `includeBehindModal:
+   * true` also lists the texts given to a region behind an open modal dialog,
+   * which assistive technology did not get. What the page made available to
+   * announce, not what a screen reader said.
+   * @param {*} frame the page or frame, as `_evaluateInFrame()` takes it
+   * @param {{ includeBehindModal?: boolean }} [options]
+   * @returns {Promise<Array<object>|null>}
+   */
+  async _announcementsIn(frame, options) {
+    const opts = options === undefined ? {} : options;
+    if (!opts || typeof opts !== 'object' || Array.isArray(opts)) {
+      throw new TypeError('A11yCoreBuilder.announcements(): options must be an object.');
+    }
+    const unknown = Object.keys(opts).filter((k) => k !== 'includeBehindModal');
+    if (unknown.length) {
+      throw new TypeError(`A11yCoreBuilder.announcements(): no option named ${unknown.map((k) => `"${k}"`).join(', ')}; use includeBehindModal.`);
+    }
+    if (opts.includeBehindModal !== undefined && typeof opts.includeBehindModal !== 'boolean') {
+      throw new TypeError('A11yCoreBuilder.announcements(): includeBehindModal must be true or false.');
+    }
+    if (typeof this._evaluateInFrame !== 'function') {
+      throw new Error('A11yCoreBuilder.announcements(): this binding reads no page yet; it needs _evaluateInFrame().');
+    }
+    const getAnnouncements = this._coreGetAnnouncements();
+    if (!getAnnouncements) {
+      throw new Error('A11yCoreBuilder.announcements(): needs @surea11y/core 1.14.0 or later, installed beside the binding, in Node.');
+    }
+    const asked = { selectors: true, ...(opts.includeBehindModal ? { includeBehindModal: true } : {}) };
+    const list = await this._evaluateInFrame(frame, getAnnouncements, [asked]);
+    return Array.isArray(list) ? list : null;
+  }
+
+  /**
+   * The installed core's getAnnouncements(), self-contained so a driver
+   * sends it into a page, or null: an older core, or none that can be loaded.
+   */
+  _coreGetAnnouncements() {
+    try {
+      if (typeof module !== 'object' || !module || typeof module.require !== 'function') return null;
+      const { getAnnouncements } = module.require(CORE);
+      return typeof getAnnouncements === 'function' ? getAnnouncements : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Whether this binding can take screenshots: it implements the two
    * driver methods the shared step uses, or replaces the step itself.
    */
