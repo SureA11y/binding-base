@@ -336,7 +336,7 @@ export function getScanGaps(result: ScanResultLike): ScanGap[];
  */
 export function formatFailures(
   input: ScanResultLike | ReadonlyArray<object>,
-  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity }
+  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity; hookReasonCodes?: HookReasonCodes | null }
 ): string;
 
 /** A rule result's severity, least to most severe in SEVERITIES. */

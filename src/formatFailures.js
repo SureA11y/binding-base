@@ -52,7 +52,7 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  *   array (or any subset of it, e.g. already passed through .reportOnly())
  *   -- see surea11y's docs/OUTPUT_SCHEMA.md for the shape. For a
  *   frames(true) scan, format `topFrame` and each frame on its own.
- * @param {{ outcomes?: string[], howToCheck?: boolean, failOnSeverity?: string }} [opts]
+ * @param {{ outcomes?: string[], howToCheck?: boolean, failOnSeverity?: string, hookReasonCodes?: object }} [opts]
  *   `outcomes`: which occurrences to include, by their own outcome
  *   (`'fail'`, `'cantTell'`, or `'pass'`/`'notApplicable'` for the rare
  *   occurrence such a rule carries) or by their review group among the
@@ -65,10 +65,13 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  *   (`howToCheck`, which analyze() adds with core 1.14.0 and later).
  *   `failOnSeverity` (as getGatingFailures() takes it): a failure below
  *   that level is still listed, marked as one that doesn't fail the test.
+ *   `hookReasonCodes`: core's HOOK_REASON_CODES, for the hook notes where
+ *   this package can't load core (a browser bundle), as getScanNotes() takes
+ *   them.
  * @returns {string}
  */
 function formatFailures(input, opts = {}) {
-  const { outcomes = ['fail', 'cantTell'], howToCheck = false, failOnSeverity } = opts || {};
+  const { outcomes = ['fail', 'cantTell'], howToCheck = false, failOnSeverity, hookReasonCodes = null } = opts || {};
   const wanted = validOutcomes(outcomes);
   const level = readFailOnSeverity(failOnSeverity, 'formatFailures(): failOnSeverity');
   if (Array.isArray(input)) return formatChecks(input, wanted, howToCheck, level) || NO_FINDINGS;
@@ -86,7 +89,7 @@ function formatFailures(input, opts = {}) {
   else if (!gaps.length) blocks.push(NO_FINDINGS);
   else if (!gaps.some((g) => g.kind === 'context-not-found')) blocks.push(NO_FINDINGS_IN_SCANNED);
   if (gaps.length) blocks.push(gaps.map((g) => g.message).join('\n'));
-  const notes = getScanNotes(input);
+  const notes = getScanNotes(input, { hookReasonCodes });
   if (notes.length) blocks.push(notes.map((n) => n.message).join('\n'));
   const version = input.engine && typeof input.engine.version === 'string' ? input.engine.version : null;
   if (version) blocks.push(`Scanned with @surea11y/core ${version}.`);
