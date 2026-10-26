@@ -199,6 +199,8 @@ export class A11yCoreBuilderBase {
    * run in `frame` through _evaluateInFrame(); null without the live-region hook.
    */
   _announcementsIn(frame: unknown, options?: { includeBehindModal?: boolean }): Promise<LocatedAnnouncement[] | null>;
+  /** Core's HOOK_REASON_CODES for _warnScanGaps()'s hook notes; null (the default) to load them from core. A browser-run binding returns its own import. */
+  _hookReasonCodes(): HookReasonCodes | null;
   /** The installed core's getAnnouncements(), or null with an older core or none that can be loaded. */
   _coreGetAnnouncements(): ((...args: any[]) => unknown) | null;
   /** The installed core's addHowToCheck(), or null with an older core or none that can be loaded. */

@@ -154,3 +154,14 @@ test('_warnScanGaps(): each hook note once per builder', () => {
   const expected = core.HOOK_REASON_CODES ? 3 : 1;
   assert.strictEqual(lines.length, expected, lines.join('\n'));
 });
+
+test('_warnScanGaps(): a binding that can\'t load core gives the hook codes itself', () => {
+  class InBrowser extends A11yCoreBuilderBase {
+    _hookReasonCodes() {
+      return HOOK_CODES;
+    }
+  }
+  const seen = [];
+  new InBrowser().logger((entry) => seen.push(entry.kind))._warnScanGaps(result({ layout: true }, KEYBOARD), 'x');
+  assert.deepStrictEqual(seen, ['listener-hook', 'live-region-hook']);
+});
