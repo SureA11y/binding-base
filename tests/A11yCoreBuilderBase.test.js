@@ -286,6 +286,46 @@ test('A11yCoreBuilderBase: _applyReportOnly() tolerates a falsy/malformed result
   assert.strictEqual(b._applyReportOnly(noChecksResults), noChecksResults);
 });
 
+test('A11yCoreBuilderBase: _applyReportOnly() adds the steps through core\'s addHowToCheck(), with the packs, and never throws', () => {
+  const result = { checksResults: [{ ruleId: 'a', outcome: 'cantTell', occurrences: [{}] }] };
+  const calls = [];
+  class WithSteps extends A11yCoreBuilderBase {
+    _coreAddHowToCheck() {
+      return (r, options) => {
+        calls.push(options);
+        return { ...r, stepped: true };
+      };
+    }
+  }
+  assert.strictEqual(new WithSteps()._applyReportOnly(result).stepped, true);
+  const pack = { name: '@acme/p', version: '1.0.0' };
+  new WithSteps().withPacks(pack)._applyReportOnly(result);
+  assert.deepStrictEqual(calls, [undefined, { packs: [pack] }]);
+  // Before reportOnly(), which filters what the steps were added to.
+  const filtered = new WithSteps().reportOnly(['fail'])._applyReportOnly(result);
+  assert.deepStrictEqual(filtered, { checksResults: [], stepped: true });
+  // Something that isn't a result is not handed to core.
+  calls.length = 0;
+  assert.strictEqual(new WithSteps()._applyReportOnly(null), null);
+  assert.deepStrictEqual(calls, []);
+
+  // A core older than 1.14.0, or one that can't be loaded: as before.
+  class OlderCore extends A11yCoreBuilderBase {
+    _coreAddHowToCheck() {
+      return null;
+    }
+  }
+  assert.strictEqual(new OlderCore()._applyReportOnly(result), result);
+  class Throwing extends A11yCoreBuilderBase {
+    _coreAddHowToCheck() {
+      return () => {
+        throw new Error('broken');
+      };
+    }
+  }
+  assert.strictEqual(new Throwing()._applyReportOnly(result), result);
+});
+
 test('A11yCoreBuilderBase: analyze() throws by default -- every subclass must implement it', () => {
   assert.throws(() => new A11yCoreBuilderBase().analyze(), /must be implemented by a subclass/);
 });

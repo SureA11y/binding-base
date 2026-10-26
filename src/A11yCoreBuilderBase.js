@@ -7,9 +7,7 @@ const { getScanNotes } = require('./scanNotes');
 const { normalizeScreenshotOptions, captureScreenshots } = require('./screenshots');
 const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
 
-// See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
-// checksResults entry can carry.
-const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
+const { VALID_OUTCOMES } = require('./review');
 
 // @surea11y/core/pack prepares packs with Node's fs and vm, so it is loaded
 // through Node's own require with the id in a variable, which a bundler
@@ -782,13 +780,57 @@ class A11yCoreBuilderBase {
     return { runOnly, engineOptions };
   }
 
-  /** Filters a single native result object's checksResults per .reportOnly(), if set. */
+  /**
+   * The last step of each frame's result, for a subclass's analyze() to call
+   * once per scanned frame: gives each undecided finding the steps a person
+   * takes to answer it (`howToCheck`, see `_addHowToCheck()`), then filters
+   * checksResults per .reportOnly(), if set. Returns a copy where it changes
+   * anything.
+   */
   _applyReportOnly(result) {
-    if (!this._reportOutcomes || !result || !Array.isArray(result.checksResults)) return result;
+    const withSteps = this._addHowToCheck(result);
+    if (!this._reportOutcomes || !withSteps || !Array.isArray(withSteps.checksResults)) return withSteps;
     return {
-      ...result,
-      checksResults: result.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
+      ...withSteps,
+      checksResults: withSteps.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
     };
+  }
+
+  /**
+   * A copy of one frame's result whose undecided findings carry
+   * `howToCheck`, the steps a person takes to answer them, from
+   * @surea11y/core's addHowToCheck() (1.14.0 and later), in the scan's
+   * locale. The in-page engine leaves them out, so a result from
+   * runa11yCoreInPage comes without them. The packs given to withPacks() add
+   * their rules' own steps. Never throws: with an older core, in a browser
+   * bundle (a Cypress spec, which reads them with core's
+   * @surea11y/core/how-to-check instead), or for anything but a result, it
+   * returns `result` as given.
+   */
+  _addHowToCheck(result) {
+    if (!result || typeof result !== 'object' || !Array.isArray(result.checksResults)) return result;
+    const addHowToCheck = this._coreAddHowToCheck();
+    if (!addHowToCheck) return result;
+    try {
+      return addHowToCheck(result, this._packs.length ? { packs: this._packs } : undefined);
+    } catch {
+      return result;
+    }
+  }
+
+  /**
+   * The @surea11y/core installed beside the binding's addHowToCheck(), which
+   * came with 1.14.0, or null: an older core, or none that can be loaded (a
+   * browser bundle).
+   */
+  _coreAddHowToCheck() {
+    try {
+      if (typeof module !== 'object' || !module || typeof module.require !== 'function') return null;
+      const { addHowToCheck } = module.require(CORE);
+      return typeof addHowToCheck === 'function' ? addHowToCheck : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
