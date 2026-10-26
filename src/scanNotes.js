@@ -25,7 +25,7 @@ const HOOKS = [
     name: 'listener hook',
     codes: 'listener',
     environment: 'listenerHook',
-    script: 'listenerHookScript()',
+    install: 'installListenerHook()',
     without: 'without seeing the listeners the page adds from script'
   },
   {
@@ -33,7 +33,7 @@ const HOOKS = [
     name: 'live-region hook',
     codes: 'liveRegion',
     environment: 'liveRegionHook',
-    script: 'liveRegionHookScript()',
+    install: 'installLiveRegionHook()',
     without: 'without a record of what the page\'s live regions were given'
   }
 ];
@@ -112,7 +112,8 @@ function hookFindings(result, entries) {
  *   counts them and `rules` names their rules. Which findings these are is
  *   core's HOOK_REASON_CODES, read from the core installed beside the
  *   binding, or from `options.hookReasonCodes` where it can't be (a browser
- *   bundle): without either, there is no such note.
+ *   bundle, which imports it from @surea11y/core/how-to-check): without
+ *   either, there is no such note.
  *
  * @param {object} result one scan result (for a frames(true) scan, call it
  *   on `topFrame` and on each entry of `frames` that has `checksResults`)
@@ -176,7 +177,7 @@ function getScanNotes(result, options) {
       message:
         `${plural(count, 'finding', 'findings')} (${rules.join(', ')}) ${count === 1 ? 'was' : 'were'} judged ${hook.without}` +
         (late ? `, since the ${hook.name} was installed after the page's scripts ran. ` : '. ') +
-        `Install the ${hook.name} before the page loads (${hook.script} from @surea11y/core) to have ${count === 1 ? 'it' : 'them'} judged by what the page does.`
+        `Install the ${hook.name} before the page loads (${hook.install} in your binding) to have ${count === 1 ? 'it' : 'them'} judged by what the page does.`
     });
   }
 

@@ -129,7 +129,7 @@ test('getScanNotes(): findings a hook decides or leans, judged without it', () =
     ['listener-hook', 'none', 2, ['click-handler-keyboard-operable']],
     ['live-region-hook', 'none', 1, ['live-region-announcements']]
   ]);
-  assert.match(notes[0].message, /^2 findings \(click-handler-keyboard-operable\) were judged without seeing the listeners the page adds from script\. Install the listener hook before the page loads \(listenerHookScript\(\) from @surea11y\/core\)/);
+  assert.match(notes[0].message, /^2 findings \(click-handler-keyboard-operable\) were judged without seeing the listeners the page adds from script\. Install the listener hook before the page loads \(installListenerHook\(\) in your binding\)/);
   assert.match(notes[1].message, /^1 finding \(live-region-announcements\) was judged without a record/);
 });
 
