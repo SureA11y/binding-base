@@ -4,6 +4,7 @@ const { formatOccurrenceLocation } = require('./shadowDom');
 const { getScanGaps } = require('./scanGaps');
 const { getScanNotes } = require('./scanNotes');
 const { readFailOnSeverity, countsForGate } = require('./severityGate');
+const { VALID_OUTCOMES, occurrenceOutcome, reviewGroupOf, REVIEW_ORDER } = require('./review');
 
 const NO_FINDINGS = 'No accessibility violations found.';
 const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was scanned.';
@@ -26,6 +27,15 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  * @surea11y/binding-base exists to hold in one place. See this package's
  * README.md.
  *
+ * Each occurrence is read by its own outcome (`occurrenceOutcome` where the
+ * rule gives one), since a rule's findings can sit in different tiers: a
+ * failing rule's questions are questions. They come in the order a review
+ * takes, as core's HTML report groups them: failures, then the questions
+ * that lean fail, those that lean pass, and those only a person can answer
+ * (a lean, @surea11y/core 1.14.0 and later). A question says which way it
+ * leans and why, what could make that wrong, and what would settle it; with
+ * `howToCheck: true`, also the steps that answer it.
+ *
  * An occurrence inside a shadow tree is located through its shadow hosts,
  * as `my-app >>> my-card >>> img` (see formatOccurrenceLocation()). One
  * pictured by `.screenshots({ dir })` names its file below that.
@@ -33,27 +43,35 @@ const NO_FINDINGS_IN_SCANNED = 'No accessibility violations found in what was sc
  * Given a whole scan result rather than its checksResults, it also says
  * what the scan left out (getScanGaps(): a scope that matched nothing,
  * custom rules that did not run), so such a scan does not read as clean,
- * then its notes (getScanNotes(): forced colors, custom elements the
- * internals hook would have let the engine read), and ends with the
- * @surea11y/core release that produced the result (`engine.version`,
- * 1.10.0 and later) for a bug report to quote.
+ * then its notes (getScanNotes(): forced colors, the hooks that would have
+ * let the engine read more), and ends with the @surea11y/core release that
+ * produced the result (`engine.version`, 1.10.0 and later) for a bug report
+ * to quote.
  *
  * @param {object|Array<object>} input one scan result, or its checksResults
  *   array (or any subset of it, e.g. already passed through .reportOnly())
  *   -- see surea11y's docs/OUTPUT_SCHEMA.md for the shape. For a
  *   frames(true) scan, format `topFrame` and each frame on its own.
- * @param {{ outcomes?: string[], failOnSeverity?: string }} [opts] Which
- *   outcomes to include. Defaults to ['fail', 'cantTell'] -- the outcomes
- *   that report something found. A `notApplicable` rule may still carry one
- *   occurrence saying why it had nothing to judge, which is not a finding
- *   and stays out by default; see OUTPUT_SCHEMA.md's note on occurrences.
- *   With `failOnSeverity` (as getGatingFailures() takes it), a failure below
+ * @param {{ outcomes?: string[], howToCheck?: boolean, failOnSeverity?: string }} [opts]
+ *   `outcomes`: which occurrences to include, by their own outcome
+ *   (`'fail'`, `'cantTell'`, or `'pass'`/`'notApplicable'` for the rare
+ *   occurrence such a rule carries) or by their review group among the
+ *   questions (`'leanFail'`, `'leanPass'`, `'open'`; `'cantTell'` is all
+ *   three). Defaults to ['fail', 'cantTell'] -- the outcomes that report
+ *   something found. A `notApplicable` rule may still carry one occurrence
+ *   saying why it had nothing to judge, which is not a finding and stays out
+ *   by default; see OUTPUT_SCHEMA.md's note on occurrences. Anything else
+ *   throws a TypeError. `howToCheck`: list each question's steps
+ *   (`howToCheck`, which analyze() adds with core 1.14.0 and later).
+ *   `failOnSeverity` (as getGatingFailures() takes it): a failure below
  *   that level is still listed, marked as one that doesn't fail the test.
  * @returns {string}
  */
-function formatFailures(input, { outcomes = ['fail', 'cantTell'], failOnSeverity } = {}) {
+function formatFailures(input, opts = {}) {
+  const { outcomes = ['fail', 'cantTell'], howToCheck = false, failOnSeverity } = opts || {};
+  const wanted = validOutcomes(outcomes);
   const level = readFailOnSeverity(failOnSeverity, 'formatFailures(): failOnSeverity');
-  if (Array.isArray(input)) return formatChecks(input, outcomes, level) || NO_FINDINGS;
+  if (Array.isArray(input)) return formatChecks(input, wanted, howToCheck, level) || NO_FINDINGS;
   if (!input || typeof input !== 'object' || !Array.isArray(input.checksResults)) {
     throw new TypeError(
       'formatFailures(): expected a scan result or its checksResults array; ' +
@@ -61,7 +79,7 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'], failOnSeverity
     );
   }
 
-  const findings = formatChecks(input.checksResults, outcomes, level);
+  const findings = formatChecks(input.checksResults, wanted, howToCheck, level);
   const gaps = getScanGaps(input);
   const blocks = [];
   if (findings) blocks.push(findings);
@@ -75,41 +93,118 @@ function formatFailures(input, { outcomes = ['fail', 'cantTell'], failOnSeverity
   return blocks.join('\n\n');
 }
 
-function formatChecks(checksResults, outcomes, level) {
-  const relevant = checksResults.filter((r) => outcomes.includes(r.outcome));
-  // A failing rule below the gate's level: listed, and marked.
-  const label = (check) =>
-    check.outcome === 'fail' && !countsForGate(check.severity, level)
-      ? `${check.severity}, below failOnSeverity ${level}, does not fail the test`
-      : check.severity;
+// What `outcomes` may name: an outcome, or a review group among the questions.
+const OUTCOME_NAMES = VALID_OUTCOMES.concat(['leanFail', 'leanPass', 'open']);
 
+function validOutcomes(outcomes) {
+  const list = Array.isArray(outcomes) ? outcomes : [outcomes];
+  for (const name of list) {
+    if (!OUTCOME_NAMES.includes(name)) {
+      throw new TypeError(`formatFailures(): outcomes may be ${OUTCOME_NAMES.map((o) => `'${o}'`).join(', ')}, not ${JSON.stringify(name)}.`);
+    }
+  }
+  return list;
+}
+
+// Whether an occurrence (or a rule with none, `occurrence` null) is one the
+// caller asked for: by its own tier and review group, or, for a rule that
+// neither fails nor asks, by the rule's outcome.
+function isWanted(check, occurrence, wanted) {
+  const group = reviewGroupOf(check, occurrence);
+  if (!group) return wanted.includes(check.outcome);
+  return wanted.includes(group) || wanted.includes(occurrenceOutcome(check, occurrence));
+}
+
+// The rank of an entry in a review: failures, likely failures, likely
+// passes, open questions, then a pass or notApplicable rule's occurrences.
+function rankOf(check, occurrence) {
+  const i = REVIEW_ORDER.indexOf(reviewGroupOf(check, occurrence));
+  return i === -1 ? REVIEW_ORDER.length : i;
+}
+
+const GROUP_LABELS = { leanFail: 'likely fails', leanPass: 'likely passes', open: 'needs review' };
+
+// The severity, and for a failure below the gate's level, that it doesn't
+// fail the test; it is still listed.
+function severityLabel(check, level) {
+  return check.outcome === 'fail' && !countsForGate(check.severity, level)
+    ? `${check.severity}, below failOnSeverity ${level}, does not fail the test`
+    : check.severity;
+}
+
+function headLine(n, check, occurrence, text, level) {
+  const label = GROUP_LABELS[reviewGroupOf(check, occurrence)];
+  const tag = label ? `${check.severity}, ${label}` : severityLabel(check, level);
+  return `${n}) ${check.ruleId} (${tag}): ${text}`;
+}
+
+// What a question says beyond its summary: which way it leans and why, what
+// could make that wrong, what would settle it, and, when asked, the steps.
+function questionLines(check, occurrence, howToCheck) {
   const lines = [];
-  let n = 0;
-  for (const check of relevant) {
-    if (!check.occurrences.length) {
+  const group = reviewGroupOf(check, occurrence);
+  if (group !== 'leanFail' && group !== 'leanPass' && group !== 'open') return lines;
+  const lean = occurrence.lean || {};
+  if (group !== 'open' && typeof lean.why === 'string' && lean.why) {
+    lines.push(`   ${group === 'leanFail' ? 'Why it likely fails' : 'Why it likely passes'}: ${lean.why}`);
+  }
+  if (group !== 'open' && typeof lean.caution === 'string' && lean.caution) lines.push(`   Caution: ${lean.caution}`);
+  const needed = occurrence.uncertainty && occurrence.uncertainty.needed;
+  if (typeof needed === 'string' && needed) lines.push(`   To settle it: ${needed}`);
+  const how = howToCheck ? occurrence.howToCheck : null;
+  if (how && Array.isArray(how.steps) && how.steps.length) {
+    lines.push('   How to check:');
+    how.steps.forEach((step, i) => lines.push(`     ${i + 1}. ${step}`));
+    if (typeof how.passWhen === 'string' && how.passWhen) lines.push(`   Passes when: ${how.passWhen}`);
+    if (typeof how.failWhen === 'string' && how.failWhen) lines.push(`   Fails when: ${how.failWhen}`);
+  }
+  return lines;
+}
+
+function formatChecks(checksResults, wanted, howToCheck, level) {
+  const entries = [];
+  for (const check of checksResults) {
+    if (!check || typeof check !== 'object') continue;
+    const occurrences = Array.isArray(check.occurrences) ? check.occurrences : [];
+    if (!occurrences.length) {
       // A thrown rule surfaces as outcome: "cantTell" with occurrences: []
       // and error set to the exception message (see OUTPUT_SCHEMA.md) --
       // still worth surfacing rather than silently dropping.
-      n += 1;
-      lines.push(`${n}) ${check.ruleId} (${label(check)}): ${check.error || check.title}`);
+      if (wanted.includes(check.outcome) || (check.outcome === 'cantTell' && wanted.includes('open'))) {
+        entries.push({ check, occurrence: null, rank: rankOf(check, null) });
+      }
       continue;
     }
-    for (const occurrence of check.occurrences) {
-      n += 1;
-      lines.push(`${n}) ${check.ruleId} (${label(check)}): ${occurrence.summary}`);
-      const location = formatOccurrenceLocation(occurrence);
-      if (location) lines.push(`   at ${location}`);
-      // Scanned under conditions (.conditions()): where it was found.
-      if (Array.isArray(occurrence.conditions) && occurrence.conditions.length) {
-        lines.push(`   seen in: ${occurrence.conditions.join(', ')}`);
+    for (const occurrence of occurrences) {
+      if (occurrence && isWanted(check, occurrence, wanted)) {
+        entries.push({ check, occurrence, rank: rankOf(check, occurrence) });
       }
-      if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
-      // A picture written to a file by .screenshots({ dir }); one held as a
-      // buffer, or skipped, has nothing to point to.
-      const shot = occurrence.screenshot;
-      if (shot && typeof shot.path === 'string' && shot.path) lines.push(`   screenshot: ${shot.path}`);
     }
   }
+  // Array.prototype.sort is stable: within a group, the scan's own order.
+  entries.sort((a, b) => a.rank - b.rank);
+
+  const lines = [];
+  entries.forEach(({ check, occurrence }, i) => {
+    const n = i + 1;
+    if (!occurrence) {
+      lines.push(`${n}) ${check.ruleId} (${severityLabel(check, level)}): ${check.error || check.title}`);
+      return;
+    }
+    lines.push(headLine(n, check, occurrence, occurrence.summary, level));
+    const location = formatOccurrenceLocation(occurrence);
+    if (location) lines.push(`   at ${location}`);
+    // Scanned under conditions (.conditions()): where it was found.
+    if (Array.isArray(occurrence.conditions) && occurrence.conditions.length) {
+      lines.push(`   seen in: ${occurrence.conditions.join(', ')}`);
+    }
+    if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
+    lines.push(...questionLines(check, occurrence, howToCheck));
+    // A picture written to a file by .screenshots({ dir }); one held as a
+    // buffer, or skipped, has nothing to point to.
+    const shot = occurrence.screenshot;
+    if (shot && typeof shot.path === 'string' && shot.path) lines.push(`   screenshot: ${shot.path}`);
+  });
   return lines.join('\n');
 }
 

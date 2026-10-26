@@ -374,3 +374,123 @@ test('core contract: plannedCriteria() follows wcagLevel(): no AAA criterion for
   assert.deepStrictEqual(builder.plannedCriteria().map((r) => r.id), ['wcag-1.4.3-contrast-minimum', 'wcag-1.4.6-contrast-enhanced']);
   assert.deepStrictEqual(builder.wcagLevel('AA').plannedCriteria().map((r) => r.id), ['wcag-1.4.3-contrast-minimum']);
 });
+
+// --- 1.14: leans and how to check an undecided finding ---------------------------
+
+const { occurrenceOutcome, reviewGroupOf } = require('../src/review.js');
+
+const HAS_HOW_TO_CHECK = typeof core.addHowToCheck === 'function';
+const NEEDS_1_14 = HAS_HOW_TO_CHECK ? false : 'needs @surea11y/core 1.14.0 (addHowToCheck)';
+
+// A skipped heading level leans fail, a native checkbox's aria-checked
+// leans pass, an image with no alt fails, and whether a photo's alt says
+// enough is for a person: one finding of each group.
+const REVIEW_PAGE =
+  '<!doctype html><html lang="en"><head><title>t</title></head><body><main>' +
+  '<h1>A</h1><h3>B</h3><input type="checkbox" checked aria-checked="false" aria-label="Agree"><img src="a.png">' +
+  '<img src="photo.jpg" alt="A photo"></main></body></html>';
+const REVIEW_RULES = ['heading-order', 'aria-checked-state-mismatch', 'img-alt-present', 'img-alt-quality'];
+
+test('core contract: _applyReportOnly() gives undecided findings the steps addHowToCheck() gives', { skip: NEEDS_1_14 }, () => {
+  const page = pageScan(REVIEW_PAGE);
+  try {
+    const builder = new A11yCoreBuilderBase().withRules(REVIEW_RULES);
+    const raw = page.scan(builder);
+    const heading = (r) => r.checksResults.find((c) => c.ruleId === 'heading-order').occurrences[0];
+    assert.strictEqual(heading(raw).howToCheck, undefined, 'the in-page engine leaves the steps out');
+    const finished = builder._applyReportOnly(raw);
+    assert.deepStrictEqual(finished, core.addHowToCheck(raw));
+    assert.ok(heading(finished).howToCheck.steps.length);
+    // A decided finding gets none, and reportOnly() still filters after.
+    const img = finished.checksResults.find((c) => c.ruleId === 'img-alt-present').occurrences[0];
+    assert.strictEqual(img.howToCheck, undefined);
+    const failsOnly = new A11yCoreBuilderBase().withRules(REVIEW_RULES).reportOnly(['fail'])._applyReportOnly(raw);
+    assert.deepStrictEqual(failsOnly.checksResults.map((c) => c.ruleId), ['img-alt-present']);
+    // In the scan's locale.
+    const fr = page.scan(new A11yCoreBuilderBase().withRules('heading-order').options({ locale: 'fr' }));
+    const frSteps = heading(new A11yCoreBuilderBase()._applyReportOnly(fr)).howToCheck.steps;
+    assert.notStrictEqual(frSteps[0], heading(finished).howToCheck.steps[0]);
+  } finally {
+    page.close();
+  }
+});
+
+test("core contract: a pack rule's undecided findings get the steps of its meta.review", { skip: NEEDS_1_14 }, () => {
+  const review = {
+    MARQUEE_REVIEW: {
+      steps: ['Find the marquee the report names.', 'Watch whether it moves.'],
+      passWhen: 'It does not move, or a control pauses it.',
+      failWhen: 'It moves with nothing to pause it, which fails WCAG 2.2.2.'
+    }
+  };
+  const asking = definePack({
+    name: '@acme/a11y-questions',
+    version: '1.0.0',
+    namespace: 'acmeq',
+    core: '^1.11.1',
+    rules: [
+      {
+        id: 'acmeq-marquee',
+        meta: { title: 'Marquee', tags: ['acme'], i18n: { titleKey: 'acmeqMarquee_title' }, review },
+        runInPage: (ctx) => {
+          const m = ctx.document.querySelector('marquee');
+          return m
+            ? { outcome: 'cantTell', occurrences: [ctx.helpers.reportOccurrence(m, { summary: 'Does it stop?', data: { details: { reasonCode: 'MARQUEE_REVIEW' } } })] }
+            : { outcome: 'notApplicable', occurrences: [] };
+        }
+      }
+    ]
+  });
+  const builder = new A11yCoreBuilderBase().withPacks(asking).withRules('acmeq-marquee');
+  const page = packPage(builder);
+  try {
+    const result = builder._applyReportOnly(page.scan(builder));
+    const [check] = result.checksResults;
+    assert.strictEqual(check.outcome, 'cantTell');
+    assert.deepStrictEqual(check.occurrences[0].howToCheck, review.MARQUEE_REVIEW);
+  } finally {
+    page.close();
+  }
+});
+
+test("core contract: occurrenceOutcome() and reviewGroupOf() read a real result as core's own do", { skip: typeof core.reviewGroupOf === 'function' ? false : 'needs @surea11y/core 1.14.0 (reviewGroupOf)' }, () => {
+  const page = pageScan(REVIEW_PAGE);
+  try {
+    const result = page.scan(new A11yCoreBuilderBase().withRules(REVIEW_RULES));
+    const groups = new Set();
+    for (const check of result.checksResults) {
+      for (const occ of check.occurrences) groups.add(reviewGroupOf(check, occ));
+      // An occurrence with no tier of its own, and none at all, read the same too.
+      for (const occ of check.occurrences.concat([{}, null])) {
+        assert.strictEqual(occurrenceOutcome(check, occ), core.occurrenceOutcome(check, occ), check.ruleId);
+        assert.strictEqual(reviewGroupOf(check, occ), core.reviewGroupOf(check, occ), check.ruleId);
+      }
+    }
+    assert.deepStrictEqual([...groups].filter(Boolean).sort(), ['fail', 'leanFail', 'leanPass', 'open']);
+  } finally {
+    page.close();
+  }
+});
+
+test('core contract: formatFailures() lists a real result in review order, with its leans and steps', { skip: NEEDS_1_14 }, () => {
+  const page = pageScan(REVIEW_PAGE);
+  try {
+    const builder = new A11yCoreBuilderBase().withRules(REVIEW_RULES);
+    const result = builder._applyReportOnly(page.scan(builder));
+    const text = formatFailures(result, { howToCheck: true });
+    const heads = text.split('\n').filter((l) => /^\d+\) /.test(l)).map((l) => l.replace(/:.*/, ''));
+    assert.deepStrictEqual(heads, [
+      '1) img-alt-present (serious)',
+      '2) heading-order (minor, likely fails)',
+      '3) aria-checked-state-mismatch (moderate, likely passes)',
+      '4) img-alt-quality (minor, needs review)'
+    ]);
+    assert.match(text, /\n {3}Why it likely fails: The heading skips a level/);
+    assert.match(text, /\n {3}Why it likely passes: /);
+    assert.match(text, /\n {3}How to check:\n {5}1\. /);
+    // Only the failures, for an assertion that gates on them.
+    assert.match(formatFailures(result, { outcomes: ['fail'] }), /^1\) img-alt-present \(serious\): [^\n]+\n {3}at [^\n]+\n[^\n]+\n\nScanned with/);
+  } finally {
+    page.close();
+  }
+});

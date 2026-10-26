@@ -42,7 +42,7 @@ test('formatFailures(): with failOnSeverity, a failure below the level is listed
   assert.match(text, /3\) aria-allowed-attr \(moderate, below failOnSeverity serious, does not fail the test\): Not allowed\./);
   assert.match(text, /4\) empty-heading \(minor, below failOnSeverity serious, does not fail the test\): Empty\./);
   // A question is never a failure, so never marked.
-  assert.match(text, /5\) region \(critical\): Outside\./);
+  assert.match(text, /5\) region \(critical, needs review\): Outside\./);
   assert.doesNotMatch(formatFailures(result), /below failOnSeverity/);
   assert.throws(() => formatFailures(result, { failOnSeverity: 'blocker' }), TypeError);
 });
