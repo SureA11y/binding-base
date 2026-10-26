@@ -170,6 +170,20 @@ test('formatFailures(): outcomes can name a review group, and howToCheck lists t
   assert.strictEqual(formatFailures(thrown, { outcomes: ['leanFail'] }), 'No accessibility violations found.');
 });
 
+test('formatFailures(): a lean says how often a lean of its kind was right, where core counted it', () => {
+  const measured = [{
+    ruleId: 'bypass-blocks-present',
+    outcome: 'cantTell',
+    severity: 'serious',
+    occurrences: [{ summary: 'No way past the navigation.', lean: { toward: 'fail', why: 'Navigation comes first.', measured: { agreed: 4, cases: 4, corpus: 'ACT' } } }]
+  }];
+  assert.match(formatFailures(measured), /\n {3}Why it likely fails: Navigation comes first\. \(right in 4 of 4 known cases\)$/);
+  measured[0].occurrences[0].lean.measured = { agreed: 1, cases: 1 };
+  assert.match(formatFailures(measured), /\(right in 1 of 1 known case\)$/);
+  measured[0].occurrences[0].lean.measured = { agreed: 'x', cases: 0 };
+  assert.match(formatFailures(measured), /Navigation comes first\.$/);
+});
+
 test('formatFailures(): an outcome it does not know throws, rather than quietly listing nothing', () => {
   assert.throws(() => formatFailures(MIXED, { outcomes: ['failed'] }), (e) => e instanceof TypeError && /"failed"/.test(e.message));
   assert.throws(() => formatFailures(MIXED, { outcomes: 'likelyFail' }), TypeError);
