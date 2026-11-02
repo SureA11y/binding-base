@@ -593,6 +593,21 @@ class A11yCoreBuilderBase {
   }
 
   /**
+   * The installed core's evidenceState(), self-contained so a driver sends it
+   * into a page, to picture a finding in the state it was made in; or null:
+   * a core older than 1.15.0, or none that can be loaded.
+   */
+  _coreEvidenceState() {
+    try {
+      if (typeof module !== 'object' || !module || typeof module.require !== 'function') return null;
+      const { evidenceState } = module.require(CORE);
+      return typeof evidenceState === 'function' ? evidenceState : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Whether this binding can take screenshots: it implements the two
    * driver methods the shared step uses, or replaces the step itself.
    */

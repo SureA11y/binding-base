@@ -7,10 +7,12 @@ const { screenshotInPage, HIGHLIGHT_SPACE } = require('./screenshotsInPage');
 // this file.
 const OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
-const SCREENSHOT_DEFAULTS = Object.freeze({ dir: null, outcomes: Object.freeze(['fail']), padding: 0, highlight: true, max: 50 });
+const SCREENSHOT_DEFAULTS = Object.freeze({ dir: null, outcomes: Object.freeze(['fail']), padding: 0, highlight: true, max: 50, states: true });
 
-// Why an occurrence has no picture.
-const SCREENSHOT_SKIPS = ['no-element', 'page-level', 'not-rendered', 'zero-size', 'off-screen', 'max-reached', 'capture-failed'];
+// Why an occurrence has no picture. The last two are for a picture in a
+// state only: the page kept the state from applying, or the installed core
+// can't apply it.
+const SCREENSHOT_SKIPS = ['no-element', 'page-level', 'not-rendered', 'zero-size', 'off-screen', 'max-reached', 'capture-failed', 'state-not-applied', 'state-unavailable'];
 
 // Node's fs and path, loaded through Node's own require with the id in a
 // variable, which a bundler doesn't follow (as @surea11y/core/pack is in
@@ -81,6 +83,10 @@ function normalizeScreenshotOptions(options) {
     if (!Number.isInteger(options.max) || options.max < 1) throw optionError(`max must be a whole number of 1 or more, not ${describe(options.max)}.`);
     out.max = options.max;
   }
+  if (options.states !== undefined) {
+    if (typeof options.states !== 'boolean') throw optionError(`states must be true or false, not ${describe(options.states)}.`);
+    out.states = options.states;
+  }
   return Object.freeze(out);
 }
 
@@ -107,6 +113,25 @@ function screenshotFileName(frameKey, shadowHostSelectors, selector) {
   return `element-${fnv1a(JSON.stringify([frameKey || [], shadowHostSelectors || [], selector]))}.png`;
 }
 
+/**
+ * The file name of an element's picture in a state: its picture's name,
+ * with the state after two dashes (`element-3f9a1c07--text-spacing.png`),
+ * so the two sort side by side.
+ * @param {string} name the element's file name, from screenshotFileName()
+ * @param {string} state
+ */
+function stateScreenshotFileName(name, state) {
+  return name.replace(/\.png$/, `--${String(state).replace(/[^a-z0-9-]/gi, '_')}.png`);
+}
+
+// The state a finding was made in (core's data.details.evidenceState), or
+// null: the page as it is shows it.
+function evidenceStateOf(occurrence) {
+  const details = occurrence && occurrence.data && occurrence.data.details;
+  const state = details && details.evidenceState;
+  return typeof state === 'string' && state ? state : null;
+}
+
 // An occurrence's own outcome: its tier where its rule graded them, else
 // its rule's (see OUTPUT_SCHEMA.md, occurrenceOutcome).
 function outcomeOf(check, occurrence) {
@@ -118,10 +143,12 @@ function outcomeOf(check, occurrence) {
  * own outcome is in `outcomes`, grouped by element (frame, shadow hosts and
  * selector), in the order the result first names them. Occurrences with no
  * selector, page-level findings, are listed apart, as nothing to picture.
- * Reads the result and changes nothing.
+ * `states` lists the states the element's findings were made in (core's
+ * `data.details.evidenceState`), in the order its findings name them, each
+ * to picture it in as well. Reads the result and changes nothing.
  * @param {object} result one frame's scan result
  * @param {{ outcomes?: string[], frameKey?: string[] }} [opts]
- * @returns {{ elements: Array<{ key: string, name: string, selector: string, shadowHostSelectors: string[]|null, occurrences: object[] }>, unlocated: object[] }}
+ * @returns {{ elements: Array<{ key: string, name: string, selector: string, shadowHostSelectors: string[]|null, occurrences: object[], states: string[] }>, unlocated: object[] }}
  */
 function planScreenshots(result, { outcomes = SCREENSHOT_DEFAULTS.outcomes, frameKey = [] } = {}) {
   const elements = [];
@@ -140,11 +167,13 @@ function planScreenshots(result, { outcomes = SCREENSHOT_DEFAULTS.outcomes, fram
       const key = JSON.stringify([frameKey, hosts || [], occurrence.selector]);
       let element = byKey.get(key);
       if (!element) {
-        element = { key, name: screenshotFileName(frameKey, hosts, occurrence.selector), selector: occurrence.selector, shadowHostSelectors: hosts, occurrences: [] };
+        element = { key, name: screenshotFileName(frameKey, hosts, occurrence.selector), selector: occurrence.selector, shadowHostSelectors: hosts, occurrences: [], states: [] };
         byKey.set(key, element);
         elements.push(element);
       }
       element.occurrences.push(occurrence);
+      const state = evidenceStateOf(occurrence);
+      if (state && !element.states.includes(state)) element.states.push(state);
     }
   }
   return { elements, unlocated };
@@ -373,6 +402,43 @@ async function releaseElementScreenshot({ evaluateInFrame, frame, framePath = []
 }
 
 /**
+ * Puts the scanned frame in `state` with core's evidenceState, for a picture
+ * of a finding made in it. Resolves to `{ applied: true }`, the state held
+ * until releaseStateScreenshot() with the same token, which must follow; or
+ * to `{ skipped }` (and `error`), with nothing held: `state-unavailable`
+ * when core has no evidenceState or doesn't know the state, and
+ * `state-not-applied` when the page kept it from applying (a Content
+ * Security Policy, in a browser without constructed style sheets). Never
+ * throws.
+ * @param {{ evaluateInFrame: Function, frame: *, evidenceState: Function|null, state: string, token: string }} opts
+ */
+async function prepareStateScreenshot({ evaluateInFrame, frame, evidenceState, state, token }) {
+  if (typeof evidenceState !== 'function') return { skipped: 'state-unavailable' };
+  let applied;
+  try {
+    applied = await evaluateInFrame(frame, evidenceState, [{ op: 'apply', state, token }]);
+  } catch (e) {
+    await releaseStateScreenshot({ evaluateInFrame, frame, evidenceState, token });
+    return { skipped: 'capture-failed', error: errorMessage(e) };
+  }
+  if (applied && applied.applied === true) return { applied: true };
+  await releaseStateScreenshot({ evaluateInFrame, frame, evidenceState, token });
+  return { skipped: applied && applied.reason === 'unknown-state' ? 'state-unavailable' : 'state-not-applied' };
+}
+
+/**
+ * Takes the state applied by prepareStateScreenshot() with the same token
+ * off the page, and puts its scroll position back. Never throws.
+ * @param {{ evaluateInFrame: Function, frame: *, evidenceState: Function|null, token: string }} opts
+ */
+async function releaseStateScreenshot({ evaluateInFrame, frame, evidenceState, token }) {
+  if (typeof evidenceState !== 'function') return;
+  try {
+    await evaluateInFrame(frame, evidenceState, [{ op: 'release', token }]);
+  } catch {}
+}
+
+/**
  * The shared step a binding's analyze() calls once per scanned frame, after
  * the scan and before reportOnly(): pictures the elements the result
  * flags and puts `screenshot` on each occurrence considered. See
@@ -404,6 +470,13 @@ async function captureScreenshots(builder, result, frame, framePath) {
   const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey });
   for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
 
+  // Core's evidenceState, read once a scan, when a finding needs it.
+  let evidenceState;
+  const evidenceStateFn = () => {
+    if (evidenceState === undefined) evidenceState = typeof builder._coreEvidenceState === 'function' ? builder._coreEvidenceState() : null;
+    return evidenceState;
+  };
+
   for (const element of elements) {
     let screenshot;
     if (frameError) {
@@ -414,10 +487,41 @@ async function captureScreenshots(builder, result, frame, framePath) {
       screenshot = await captureElement(element);
     }
     for (const occurrence of element.occurrences) occurrence.screenshot = screenshot;
+
+    // A finding made in a state gets a picture in it too, beside the one of
+    // the page as it is: the two show what the state changed. A picture in
+    // a state comes with its element's and counts with it against `max`.
+    if (!options.states || !element.states.length) continue;
+    for (const state of element.states) {
+      let shot;
+      if (frameError) {
+        shot = { skipped: 'capture-failed', error: frameError };
+      } else if (screenshot.skipped === 'max-reached') {
+        shot = { skipped: 'max-reached' };
+      } else {
+        shot = await captureInState(element, state);
+      }
+      const entry = { state, ...shot };
+      for (const occurrence of element.occurrences) {
+        if (evidenceStateOf(occurrence) === state) occurrence.stateScreenshots = [entry];
+      }
+    }
   }
   return result;
 
-  async function captureElement(element) {
+  async function captureInState(element, state) {
+    const stateToken = screenshotToken();
+    const fn = evidenceStateFn();
+    const applied = await prepareStateScreenshot({ evaluateInFrame, frame, evidenceState: fn, state, token: stateToken });
+    if (applied.skipped) return applied;
+    try {
+      return await captureElement(element, { name: stateScreenshotFileName(element.name, state), counts: false });
+    } finally {
+      await releaseStateScreenshot({ evaluateInFrame, frame, evidenceState: fn, token: stateToken });
+    }
+  }
+
+  async function captureElement(element, { name = element.name, counts = true } = {}) {
     const token = screenshotToken();
     const ready = await prepareElementScreenshot({ evaluateInFrame, frame, framePath, element, options, token });
     if (ready.skipped) return ready;
@@ -432,26 +536,26 @@ async function captureScreenshots(builder, result, frame, framePath) {
 
     let out;
     try {
-      out = options.dir ? { path: await writeImage(element, image) } : { buffer: image };
+      out = options.dir ? { path: await writeImage(element, image, name) } : { buffer: image };
     } catch (e) {
       return { skipped: 'capture-failed', error: errorMessage(e) };
     }
-    scan.taken += 1;
+    if (counts) scan.taken += 1;
     out.box = ready.box;
     if (ready.cropped) out.cropped = true;
     return out;
   }
 
-  async function writeImage(element, image) {
+  async function writeImage(element, image, base = element.name) {
     const fs = loadNode(FS);
     const path = loadNode(PATH);
     if (!scan.dirReady) scan.dirReady = fs.promises.mkdir(options.dir, { recursive: true });
     await scan.dirReady;
     // Two elements whose hashes collide get their own files: the second
     // name gets a number.
-    let name = element.name;
+    let name = base;
     for (let n = 2; scan.names.has(name) && scan.names.get(name) !== element.key; n++) {
-      name = element.name.replace(/\.png$/, `-${n}.png`);
+      name = base.replace(/\.png$/, `-${n}.png`);
     }
     scan.names.set(name, element.key);
     const file = path.join(options.dir, name);
@@ -466,11 +570,15 @@ module.exports = {
   normalizeScreenshotOptions,
   planScreenshots,
   screenshotFileName,
+  stateScreenshotFileName,
+  evidenceStateOf,
   screenshotFrameKey,
   screenshotToken,
   screenshotMargin,
   prepareElementScreenshot,
   releaseElementScreenshot,
+  prepareStateScreenshot,
+  releaseStateScreenshot,
   captureScreenshots,
   fnv1a
 };

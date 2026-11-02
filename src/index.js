@@ -12,10 +12,14 @@ const {
   SCREENSHOT_SKIPS,
   planScreenshots,
   screenshotFileName,
+  stateScreenshotFileName,
+  evidenceStateOf,
   screenshotFrameKey,
   screenshotToken,
   prepareElementScreenshot,
-  releaseElementScreenshot
+  releaseElementScreenshot,
+  prepareStateScreenshot,
+  releaseStateScreenshot
 } = require('./screenshots');
 const { screenshotInPage } = require('./screenshotsInPage');
 const { cropViewportScreenshot } = require('./png');
@@ -49,10 +53,14 @@ module.exports = {
   SCREENSHOT_SKIPS,
   planScreenshots,
   screenshotFileName,
+  stateScreenshotFileName,
+  evidenceStateOf,
   screenshotFrameKey,
   screenshotToken,
   prepareElementScreenshot,
   releaseElementScreenshot,
+  prepareStateScreenshot,
+  releaseStateScreenshot,
   screenshotInPage,
   cropViewportScreenshot
 };

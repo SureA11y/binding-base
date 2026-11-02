@@ -542,3 +542,24 @@ test('core contract: _announcementsIn() reads what a real page\'s live regions w
     dom.window.close();
   }
 });
+
+// Pictures in the state a finding was made in: the builder loads core's
+// evidenceState, and it runs in a page from its source, as a driver sends
+// it. Core 1.15.0 and later; skipped with an older one.
+test('_coreEvidenceState(): core\'s evidenceState, sent into a page, applies the text spacing and takes it off', { skip: typeof core.evidenceState !== 'function' && 'needs @surea11y/core 1.15.0 or later' }, () => {
+  const builder = new A11yCoreBuilderBase();
+  const fn = builder._coreEvidenceState();
+  assert.strictEqual(fn, core.evidenceState);
+  const dom = new JSDOM(PAGE, { runScripts: 'outside-only' });
+  try {
+    const inPage = dom.window.eval('(' + fn.toString() + ')');
+    const applied = JSON.parse(JSON.stringify(inPage({ op: 'apply', state: 'text-spacing', token: 't' })));
+    assert.deepStrictEqual(applied, { applied: true, via: 'style' });
+    assert.strictEqual(dom.window.document.querySelectorAll('style[data-surea11y]').length, 1);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(inPage({ op: 'release', token: 't' }))), { released: true });
+    assert.strictEqual(dom.window.document.querySelectorAll('style[data-surea11y]').length, 0);
+    assert.strictEqual(inPage({ op: 'apply', state: 'no-such-state', token: 't' }).reason, 'unknown-state');
+  } finally {
+    dom.window.close();
+  }
+});

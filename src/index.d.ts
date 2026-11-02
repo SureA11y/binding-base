@@ -64,8 +64,15 @@ export interface ScreenshotOptions {
   padding?: number;
   /** Draw a box around the element, over the page. Default true. */
   highlight?: boolean;
-  /** At most this many pictures per scan. Default 50. */
+  /** At most this many pictures per scan. Default 50. An element's picture in a state comes with its picture and doesn't count apart. */
   max?: number;
+  /**
+   * Also picture a finding made in a state the rule put the page in, such
+   * as the WCAG text spacing (core's `data.details.evidenceState`), in that
+   * state, on the occurrence's `stateScreenshots`. Needs @surea11y/core
+   * 1.15.0 or later. Default true.
+   */
+  states?: boolean;
 }
 
 /** Why an occurrence has no picture. */
@@ -76,7 +83,11 @@ export type ScreenshotSkip =
   | 'zero-size'
   | 'off-screen'
   | 'max-reached'
-  | 'capture-failed';
+  | 'capture-failed'
+  /** A picture in a state: the page kept the state from applying. */
+  | 'state-not-applied'
+  /** A picture in a state: the installed core can't apply it (older than 1.15.0, or a state it doesn't know). */
+  | 'state-unavailable';
 
 /**
  * A picture's bytes: Node's Buffer where its types are installed, which is
@@ -103,6 +114,16 @@ export type OccurrenceScreenshot =
   | { path: string; box: ScreenshotBox; cropped?: true }
   | { buffer: ScreenshotBuffer; box: ScreenshotBox; cropped?: true }
   | { skipped: ScreenshotSkip; error?: string };
+
+/**
+ * One entry of the `stateScreenshots` field `.screenshots()` puts on an
+ * occurrence made in a state (core's `data.details.evidenceState`): the
+ * element pictured with the page in that state, such as `text-spacing`,
+ * where the finding shows; or why there is none. Beside `screenshot`, the
+ * page as it is. Occurrences about the same element in the same state
+ * share one entry.
+ */
+export type OccurrenceStateScreenshot = { state: string } & OccurrenceScreenshot;
 
 /** The top-level page when a picture is taken: the second argument of `_captureBox()`. */
 export interface ScreenshotView {
@@ -203,6 +224,8 @@ export class A11yCoreBuilderBase {
   _hookReasonCodes(): HookReasonCodes | null;
   /** The installed core's getAnnouncements(), or null with an older core or none that can be loaded. */
   _coreGetAnnouncements(): ((...args: any[]) => unknown) | null;
+  /** The installed core's evidenceState(), self-contained, or null (a core older than 1.15.0). */
+  _coreEvidenceState(): ((...args: any[]) => unknown) | null;
   /** The installed core's addHowToCheck(), or null with an older core or none that can be loaded. */
   _coreAddHowToCheck(): ((result: any, options?: { packs?: unknown[] }) => any) | null;
   /** The screenshots step, once per scanned frame, after the scan and before reportOnly(); does nothing unless screenshots() was called. */
@@ -420,6 +443,8 @@ export interface PlannedScreenshot {
   selector: string;
   shadowHostSelectors: string[] | null;
   occurrences: object[];
+  /** The states its findings were made in (core's `data.details.evidenceState`), to picture it in as well. */
+  states: string[];
 }
 
 /** Which elements of one frame's result to picture, grouped by element, and the occurrences with no selector. Changes nothing. */
@@ -430,6 +455,12 @@ export function planScreenshots(
 
 /** `element-<8 hex digits>.png`, from where the element is: the same on every run and platform. */
 export function screenshotFileName(frameKey: string[], shadowHostSelectors: string[] | null | undefined, selector: string): string;
+
+/** `element-<hash>--<state>.png`: an element's picture in a state, beside its picture's file. */
+export function stateScreenshotFileName(name: string, state: string): string;
+
+/** The state a finding was made in (core's `data.details.evidenceState`), or null. */
+export function evidenceStateOf(occurrence: object | null | undefined): string | null;
 
 /** How a binding runs a self-contained function in a frame: `fn(...args)`, resolving to what it returns (its `_evaluateInFrame()`). */
 export type EvaluateInFrame = (frame: any, fn: (...args: any[]) => unknown, args: unknown[]) => Promise<unknown> | unknown;
@@ -455,6 +486,27 @@ export function prepareElementScreenshot(opts: {
 
 /** Puts the page back after prepareElementScreenshot() with the same token. Never rejects. */
 export function releaseElementScreenshot(opts: { evaluateInFrame: EvaluateInFrame; frame: unknown; framePath?: FramePathStep[]; token: string }): Promise<void>;
+
+/**
+ * Puts the scanned frame in `state` with core's `evidenceState`, the state
+ * held until releaseStateScreenshot() with the same token; or says why not,
+ * with nothing held. Never rejects.
+ */
+export function prepareStateScreenshot(opts: {
+  evaluateInFrame: EvaluateInFrame;
+  frame: unknown;
+  evidenceState: ((...args: any[]) => unknown) | null;
+  state: string;
+  token: string;
+}): Promise<{ applied: true } | { skipped: ScreenshotSkip; error?: string }>;
+
+/** Takes the state off the page after prepareStateScreenshot() with the same token. Never rejects. */
+export function releaseStateScreenshot(opts: {
+  evaluateInFrame: EvaluateInFrame;
+  frame: unknown;
+  evidenceState: ((...args: any[]) => unknown) | null;
+  token: string;
+}): Promise<void>;
 
 /** The self-contained in-page step of the screenshots, for a driver to send into a frame, as `screenshotInPage(request, element?)`. */
 export function screenshotInPage(request: { op: string; [key: string]: unknown }, element?: unknown): unknown;
