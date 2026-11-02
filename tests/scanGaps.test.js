@@ -177,4 +177,6 @@ test('getScanGaps(): one gap per profile a scan of several did not run, with why
   ]);
   // A scan of one profile, or of several that all ran, has none.
   assert.deepStrictEqual(getScanGaps(result({ engine: { profiles: ['wcag22-aa', 'wai-aria-1.2'] } })), []);
+  // An entry naming no profile, which core never writes, is no gap.
+  assert.deepStrictEqual(getScanGaps(result({ engine: { profilesNotRun: [null, { profile: '' }, { profile: '  ' }, 7] } })), []);
 });
