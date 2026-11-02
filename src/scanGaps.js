@@ -96,12 +96,15 @@ function getScanGaps(result) {
     'overridden-by-selection': 'the rules chosen in runOnly or options() select the rules instead'
   };
   for (const p of notRun) {
-    const profile = p && typeof p.profile === 'string' && p.profile ? p.profile : null;
+    const profile = p && typeof p.profile === 'string' && p.profile.trim() ? p.profile.trim() : null;
+    // An entry naming no profile says nothing a person could act on: core
+    // never writes one, so it is left out rather than reported as a gap.
+    if (!profile) continue;
     const reason = p && p.reason ? String(p.reason) : 'no reason given';
     gaps.push({
       kind: 'profile-not-run',
       profile: { name: profile, reason },
-      message: `Profile ${profile ? JSON.stringify(profile) : 'without a name'} was asked for and did not run: ${REASONS[reason] || reason}.`
+      message: `Profile ${JSON.stringify(profile)} was asked for and did not run: ${REASONS[reason] || reason}.`
     });
   }
 
