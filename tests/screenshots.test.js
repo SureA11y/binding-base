@@ -17,6 +17,10 @@ const {
   screenshotToken,
   prepareElementScreenshot,
   releaseElementScreenshot,
+  prepareStateScreenshot,
+  releaseStateScreenshot,
+  stateScreenshotFileName,
+  evidenceStateOf,
   formatFailures
 } = require('../src/index.js');
 const { fnv1a } = require('../src/screenshots.js');
@@ -125,7 +129,7 @@ test('screenshots(): off by default; on with the defaults, then replaced by each
   const b = new FakeBuilder();
   assert.strictEqual(b._screenshots, null);
   assert.strictEqual(b.screenshots(), b);
-  assert.deepStrictEqual({ ...b._screenshots }, { dir: null, outcomes: ['fail'], padding: 0, highlight: true, max: 50 });
+  assert.deepStrictEqual({ ...b._screenshots }, { dir: null, outcomes: ['fail'], padding: 0, highlight: true, max: 50, states: true });
   assert.strictEqual(b.screenshots(true)._screenshots, SCREENSHOT_DEFAULTS);
   b.screenshots({ padding: 8, outcomes: ['fail', 'cantTell', 'fail'] });
   assert.deepStrictEqual([...b._screenshots.outcomes], ['fail', 'cantTell']);
@@ -148,6 +152,7 @@ test('screenshots(): rejects an option it cannot use with a TypeError and INVALI
     [{ dir: '' }, /dir must be a non-empty string/],
     [{ dir: 7 }, /dir must be a non-empty string/],
     [{ highlight: 'yes' }, /highlight must be true or false/],
+    [{ states: 'yes' }, /states must be true or false/],
     ['a11y-shots', /expected an options object/],
     [[], /expected an options object/],
     [null, /expected an options object/]
@@ -511,4 +516,189 @@ test('screenshotFrameKey() and prepareElementScreenshot(): a frame is named and 
   assert.deepStrictEqual(JSON.parse(JSON.stringify(ready.clip)), { x: 110, y: 70, width: 100, height: 50 });
   await releaseElementScreenshot({ evaluateInFrame: inWindow, frame: child, framePath, token });
   assert.ok(!held(top) && !held(child));
+});
+
+// --- Pictures in the state a finding was made in ---------------------------
+//
+// A stand-in for core's evidenceState, self-contained as it is: its
+// "text-spacing" grows each element with a `data-box-spaced` to that box, as
+// the spacing grows the text, and puts the page back on release.
+function fakeEvidenceState(request) {
+  const held = window.__states || (window.__states = {});
+  if (request.op === 'release') {
+    const entry = held[request.token];
+    if (!entry) return { released: false };
+    delete held[request.token];
+    for (const el of document.querySelectorAll('[data-box-plain]')) {
+      el.setAttribute('data-box', el.getAttribute('data-box-plain'));
+      el.removeAttribute('data-box-plain');
+    }
+    window.scrollTo(entry.scroll[0], entry.scroll[1]);
+    return { released: true };
+  }
+  if (request.state !== 'text-spacing') return { applied: false, reason: 'unknown-state' };
+  if (window.blockStates) return { applied: false, reason: 'blocked' };
+  held[request.token] = { scroll: [window.scrollX, window.scrollY] };
+  for (const el of document.querySelectorAll('[data-box-spaced]')) {
+    el.setAttribute('data-box-plain', el.getAttribute('data-box'));
+    el.setAttribute('data-box', el.getAttribute('data-box-spaced'));
+  }
+  return { applied: true, via: 'style' };
+}
+
+class StateBuilder extends FakeBuilder {
+  _coreEvidenceState() {
+    return fakeEvidenceState;
+  }
+}
+
+const STATE_PAGE = `<!doctype html><html lang="en"><head><title>t</title></head><body>
+  <div id="clip" data-box="10 20 100 20" data-box-spaced="10 20 100 30">Text</div>
+  <div id="clip2" data-box="10 200 100 20" data-box-spaced="10 200 100 30">Text</div>
+</body></html>`;
+
+const spaced = (selector, reasonCode = 'TEXT_CLIPPED', state = 'text-spacing') =>
+  occurrence(selector, { data: { details: { reasonCode, evidenceState: state } } });
+const statesHeld = (win) => Object.keys(win.__states || {}).length;
+
+test('planScreenshots(): lists the states an element\'s findings were made in, once each', () => {
+  const plan = planScreenshots(resultWith([
+    ['text-spacing-content-loss', 'fail', [spaced('#clip'), spaced('#clip', 'TEXT_OVERLAPS'), occurrence('#clip2')]],
+    ['other', 'fail', [occurrence('#clip')]]
+  ]));
+  assert.deepStrictEqual(plan.elements.map((e) => [e.selector, e.states]), [['#clip', ['text-spacing']], ['#clip2', []]]);
+  assert.strictEqual(evidenceStateOf(spaced('#clip')), 'text-spacing');
+  assert.strictEqual(evidenceStateOf(occurrence('#clip')), null);
+});
+
+test('_captureScreenshots(): a finding made in a state gets a picture in it too, beside the page as it is', async () => {
+  const win = layoutWindow(STATE_PAGE);
+  win.scrollTo(0, 5);
+  const b = new StateBuilder().screenshots({ highlight: false });
+  b.overlays = () => win.document.querySelector('#clip').getAttribute('data-box');
+  const clipped = spaced('#clip');
+  const overlaps = spaced('#clip', 'TEXT_OVERLAPS');
+  const other = occurrence('#clip');
+  await b._captureScreenshots(resultWith([
+    ['text-spacing-content-loss', 'fail', [clipped, overlaps]],
+    ['other-rule', 'fail', [other]]
+  ]), win);
+
+  // The page as it is, then in the state, where the box has grown.
+  assert.deepStrictEqual(b.captures.map((c) => c.overlays), ['10 20 100 20', '10 20 100 30']);
+  assert.deepStrictEqual(clipped.screenshot.box, { x: 0, y: 0, width: 100, height: 20 });
+  assert.strictEqual(other.screenshot, clipped.screenshot);
+  assert.strictEqual(clipped.stateScreenshots.length, 1);
+  const [entry] = clipped.stateScreenshots;
+  assert.strictEqual(entry.state, 'text-spacing');
+  assert.ok(entry.buffer.equals(PNG));
+  assert.deepStrictEqual(entry.box, { x: 0, y: 0, width: 100, height: 30 });
+  assert.strictEqual(overlaps.stateScreenshots[0], entry, 'one picture per element and state, shared by its findings');
+  assert.ok(!('stateScreenshots' in other), 'a finding the page shows as it is gets none');
+
+  // The page is as it was: the state off, its scroll back.
+  assert.strictEqual(win.document.querySelector('#clip').getAttribute('data-box'), '10 20 100 20');
+  assert.strictEqual(statesHeld(win), 0);
+  assert.strictEqual(win.scrollY, 5);
+});
+
+test('_captureScreenshots(): an element\'s pictures count once against max', async () => {
+  const win = layoutWindow(STATE_PAGE);
+  const b = new StateBuilder().screenshots({ max: 1 });
+  const first = spaced('#clip');
+  const second = spaced('#clip2');
+  await b._captureScreenshots(resultWith([['text-spacing-content-loss', 'fail', [first, second]]]), win);
+  assert.strictEqual(b.captures.length, 2);
+  assert.ok(first.screenshot.buffer && first.stateScreenshots[0].buffer);
+  assert.deepStrictEqual(second.screenshot, { skipped: 'max-reached' });
+  assert.deepStrictEqual(second.stateScreenshots, [{ state: 'text-spacing', skipped: 'max-reached' }]);
+});
+
+test('_captureScreenshots(): states: false pictures the page as it is only', async () => {
+  const win = layoutWindow(STATE_PAGE);
+  const b = new StateBuilder().screenshots({ states: false });
+  const o = spaced('#clip');
+  await b._captureScreenshots(resultWith([['text-spacing-content-loss', 'fail', [o]]]), win);
+  assert.strictEqual(b.captures.length, 1);
+  assert.ok(o.screenshot.buffer);
+  assert.ok(!('stateScreenshots' in o));
+  assert.ok(!b.calls.includes('apply'));
+});
+
+test('_captureScreenshots(): a state that can\'t be applied is said, never pictured as the page as it is', async () => {
+  // The page keeps it out.
+  let win = layoutWindow(STATE_PAGE);
+  win.blockStates = true;
+  let b = new StateBuilder().screenshots();
+  let o = spaced('#clip');
+  await b._captureScreenshots(resultWith([['text-spacing-content-loss', 'fail', [o]]]), win);
+  assert.deepStrictEqual(o.stateScreenshots, [{ state: 'text-spacing', skipped: 'state-not-applied' }]);
+  assert.strictEqual(b.captures.length, 1);
+
+  // A state the installed core doesn't know.
+  win = layoutWindow(STATE_PAGE);
+  b = new StateBuilder().screenshots();
+  o = spaced('#clip', 'TEXT_CLIPPED', 'zoom');
+  await b._captureScreenshots(resultWith([['some-rule', 'fail', [o]]]), win);
+  assert.deepStrictEqual(o.stateScreenshots, [{ state: 'zoom', skipped: 'state-unavailable' }]);
+
+  // A core with no evidenceState at all.
+  win = layoutWindow(STATE_PAGE);
+  b = new (class extends FakeBuilder { _coreEvidenceState() { return null; } })().screenshots();
+  o = spaced('#clip');
+  await b._captureScreenshots(resultWith([['text-spacing-content-loss', 'fail', [o]]]), win);
+  assert.deepStrictEqual(o.stateScreenshots, [{ state: 'text-spacing', skipped: 'state-unavailable' }]);
+  assert.ok(o.screenshot.buffer, 'the picture of the page as it is is still taken');
+  for (const s of [o.stateScreenshots[0].skipped, 'state-not-applied']) assert.ok(SCREENSHOT_SKIPS.includes(s));
+});
+
+test('_captureScreenshots(): a picture in a state that fails takes the state off all the same', async () => {
+  const win = layoutWindow(STATE_PAGE);
+  let n = 0;
+  const b = new StateBuilder({ capture: () => { if (++n === 2) throw new Error('driver gone'); return PNG; } }).screenshots();
+  const o = spaced('#clip');
+  await b._captureScreenshots(resultWith([['text-spacing-content-loss', 'fail', [o]]]), win);
+  assert.deepStrictEqual(o.stateScreenshots, [{ state: 'text-spacing', skipped: 'capture-failed', error: 'driver gone' }]);
+  assert.strictEqual(win.document.querySelector('#clip').getAttribute('data-box'), '10 20 100 20');
+  assert.strictEqual(statesHeld(win), 0);
+  assert.strictEqual(win.document.querySelectorAll('surea11y-highlight').length, 0);
+});
+
+test('_captureScreenshots(): with dir, the picture in a state is written beside the element\'s, which formatFailures() points to', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'surea11y-shots-'));
+  try {
+    const win = layoutWindow(STATE_PAGE);
+    const shots = path.join(dir, 'a11y-shots');
+    const b = new StateBuilder().screenshots({ dir: shots });
+    const o = spaced('#clip');
+    const result = resultWith([['text-spacing-content-loss', 'fail', [o]]]);
+    await b._captureScreenshots(result, win);
+    const file = path.join(shots, screenshotFileName([], null, '#clip'));
+    const stateFile = path.join(shots, stateScreenshotFileName(screenshotFileName([], null, '#clip'), 'text-spacing'));
+    assert.match(path.basename(stateFile), /^element-[0-9a-f]{8}--text-spacing\.png$/);
+    assert.strictEqual(o.screenshot.path, file);
+    assert.strictEqual(o.stateScreenshots[0].path, stateFile);
+    assert.deepStrictEqual(fs.readdirSync(shots).sort(), [path.basename(file), path.basename(stateFile)].sort());
+
+    const message = formatFailures(result);
+    assert.ok(message.includes(`   screenshot: ${file}`));
+    assert.ok(message.includes(`   screenshot (text-spacing): ${stateFile}`));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('prepareStateScreenshot() and releaseStateScreenshot(): hold the state, say why not, never throw', async () => {
+  const win = layoutWindow(STATE_PAGE);
+  const evaluateInFrame = (w, fn, args) => inWindow(w, fn, args);
+  const token = screenshotToken();
+  assert.deepStrictEqual(await prepareStateScreenshot({ evaluateInFrame, frame: win, evidenceState: fakeEvidenceState, state: 'text-spacing', token }), { applied: true });
+  assert.strictEqual(statesHeld(win), 1);
+  await releaseStateScreenshot({ evaluateInFrame, frame: win, evidenceState: fakeEvidenceState, token });
+  assert.strictEqual(statesHeld(win), 0);
+
+  assert.deepStrictEqual(await prepareStateScreenshot({ evaluateInFrame, frame: win, evidenceState: null, state: 'text-spacing', token }), { skipped: 'state-unavailable' });
+  const failing = () => { throw new Error('frame gone'); };
+  assert.deepStrictEqual(await prepareStateScreenshot({ evaluateInFrame: failing, frame: win, evidenceState: fakeEvidenceState, state: 'text-spacing', token }), { skipped: 'capture-failed', error: 'frame gone' });
+  await releaseStateScreenshot({ evaluateInFrame: failing, frame: win, evidenceState: fakeEvidenceState, token });
 });

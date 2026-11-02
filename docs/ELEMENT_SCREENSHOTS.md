@@ -203,3 +203,12 @@ Taken on 2026-10-16, while building it:
 - **`max` counts pictures.** It bounds what a scan writes and how long it takes; an element skipped costs one round trip and no picture.
 - **Centering is decided by the element, not the padding.** A paragraph as wide as the viewport is still centered from top to bottom: deciding by the padded box put it at the top, under a sticky header.
 - **Waiting for paint**, at most 250 ms, after a step that scrolled or drew, so a driver whose screenshot doesn't wait for a new frame still shows them.
+
+Taken on 2026-11-02, for findings made in a state:
+
+- **A second picture, not a replacement.** `text-spacing-content-loss` measures with the WCAG text spacing applied and takes it off before the browser paints, so the picture of the page as it is shows the text fitting. The finding needs the page in that state to show; the page as it is shows what a user without the spacing sees. Both are kept, side by side: `screenshot` as it was, and `stateScreenshots` with the page in the state.
+- **Core applies the state.** The rule knows what it applied: core's `evidenceState()` uses the same style sheet, and a test there keeps the two alike. This package loads it from the installed core, as it loads `getAnnouncements`, so no binding changes; the state is named on the finding (`data.details.evidenceState`), so a rule that measures in another state later needs no change here.
+- **The element is measured again in the state.** The spacing grows the text and its box: the second picture is prepared, highlighted and released as the first, with the state on, so its `box` is the element's size in the state.
+- **Counted with the element against `max`.** A pair is one element's pictures; counting the second apart would halve what a scan pictures on a page where many findings are made in a state.
+- **On by default, `states: false` to turn off.** The picture of the page as it is can contradict the finding; one that shows it is what the option is for.
+- **Never pictured under the state's name when it didn't apply.** A page that keeps the state out (`state-not-applied`), or a core that can't apply it (`state-unavailable`), says so; the state is taken off in every case, a failed capture included.

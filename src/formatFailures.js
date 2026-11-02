@@ -214,6 +214,13 @@ function formatChecks(checksResults, wanted, howToCheck, level) {
     // buffer, or skipped, has nothing to point to.
     const shot = occurrence.screenshot;
     if (shot && typeof shot.path === 'string' && shot.path) lines.push(`   screenshot: ${shot.path}`);
+    // And its picture in the state the finding was made in, such as the
+    // WCAG text spacing.
+    if (Array.isArray(occurrence.stateScreenshots)) {
+      for (const entry of occurrence.stateScreenshots) {
+        if (entry && typeof entry.path === 'string' && entry.path) lines.push(`   screenshot (${entry.state}): ${entry.path}`);
+      }
+    }
   });
   return lines.join('\n');
 }
