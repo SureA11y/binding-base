@@ -308,7 +308,8 @@ export type ScanGap =
   | { kind: 'context-not-found'; message: string; selectors: string[] }
   | { kind: 'context-partly-not-found'; message: string; selectors: string[] }
   | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } }
-  | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } };
+  | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } }
+  | { kind: 'profile-not-run'; message: string; profile: { name: string | null; reason: string } };
 
 export type ScanNote =
   | { kind: 'forced-colors'; message: string; pageCss?: true }

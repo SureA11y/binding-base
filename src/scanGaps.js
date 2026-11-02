@@ -28,6 +28,11 @@ function quoteList(values) {
  *   is left out: nothing the caller asked for was skipped.
  * - `pack-skipped`: a pack (withPacks(), @surea11y/core 1.11 and later) did
  *   not run, one gap per pack, with the engine's reason.
+ * - `profile-not-run`: a scan of several profiles (options({ profile: [...] }),
+ *   @surea11y/core 1.15 and later) did not judge the page by one of them,
+ *   one gap per profile, with the engine's reason (`unknown-profile`,
+ *   `pack-skipped`, `overridden-by-selection`): it counted less than it was
+ *   asked to.
  *
  * @param {object} result one scan result (for a frames(true) scan, call it
  *   on `topFrame` and on each entry of `frames` that has `checksResults`)
@@ -80,6 +85,23 @@ function getScanGaps(result) {
       kind: 'pack-skipped',
       pack: { name, reason },
       message: `Pack ${name ? JSON.stringify(name) : 'without a name'} did not run: ${reason}.`
+    });
+  }
+
+  const notRun =
+    result.engine && Array.isArray(result.engine.profilesNotRun) ? result.engine.profilesNotRun : [];
+  const REASONS = {
+    'unknown-profile': 'no such profile in core or the packs given',
+    'pack-skipped': 'its pack did not run',
+    'overridden-by-selection': 'the rules chosen in runOnly or options() select the rules instead'
+  };
+  for (const p of notRun) {
+    const profile = p && typeof p.profile === 'string' && p.profile ? p.profile : null;
+    const reason = p && p.reason ? String(p.reason) : 'no reason given';
+    gaps.push({
+      kind: 'profile-not-run',
+      profile: { name: profile, reason },
+      message: `Profile ${profile ? JSON.stringify(profile) : 'without a name'} was asked for and did not run: ${REASONS[reason] || reason}.`
     });
   }
 

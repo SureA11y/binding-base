@@ -56,7 +56,7 @@ Extracted once five real consumers existed and the duplication was actually cost
   ```
 
   asks the page which sheets it can't read (through `_evaluateInFrame()`), fetches them, each within five seconds, and adds their text, leaving out any the caller already gave. A binding whose driver has a request API that carries the page's cookies can set `this._styleSheetFetch` to a `fetch`-like function using it; otherwise the global `fetch` is used. On by default, as axe fetches such sheets; `.fetchStyleSheets(false)` turns it off. It does nothing with an older core, and never throws. `findUnreadableStyleSheets` (the in-page step, self-contained) and `fetchStyleSheetTexts(hrefs, { fetch, timeoutMs })` are exported for a binding that runs the steps itself.
-- **`getScanGaps(result)`** — what a result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `include()` scope matched nothing (since core 1.10.0 nothing is then scanned), `'context-partly-not-found'` when some of several selectors matched nothing, one `'custom-rule-skipped'` per entry of `skippedCustomRules` (except a rule the caller excluded, see below), and, since core 1.11, one `'pack-skipped'` per entry of `skippedPacks` (a pack whose `core` range leaves out the running core, or that the page didn't register). Each has a `message`. A result from an earlier core gives `[]`.
+- **`getScanGaps(result)`** — what a result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `include()` scope matched nothing (since core 1.10.0 nothing is then scanned), `'context-partly-not-found'` when some of several selectors matched nothing, one `'custom-rule-skipped'` per entry of `skippedCustomRules` (except a rule the caller excluded, see below), since core 1.11, one `'pack-skipped'` per entry of `skippedPacks` (a pack whose `core` range leaves out the running core, or that the page didn't register), and, since core 1.15, one `'profile-not-run'` per entry of `engine.profilesNotRun`: a profile a scan of several (`.options({ profile: ['wcag22-aa', 'wai-aria-1.2'] })`) was asked for and did not judge the page by, so it counted less than it was asked to. Each has a `message`. A result from an earlier core gives `[]`.
 
   A custom rule the caller turned off on purpose isn't a gap. Core lists it in `skippedCustomRules` too, with the reason `excluded by the selection.` and, since core 1.12.0, `excluded: true`; `getScanGaps()` leaves it out, so a binding doesn't warn about it and `@surea11y/test-matchers` doesn't fail on it:
 
@@ -144,6 +144,12 @@ The script is built with the core the binding loads (`@surea11y/core/pack`'s `pa
 const policy = require('@acme/a11y-policy'); // a pack, written with definePack()
 
 builder.withPacks(policy).options({ profile: 'acme-policy' });
+```
+
+With core 1.15, `profile` also takes a list, a pack's profile beside WCAG's or another pack's, which the binding passes through as it is: each profile judges the page as it would alone, and the result reads as one profile with the rules of all (core's [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md#several-profiles)). A profile that didn't run is a `'profile-not-run'` gap.
+
+```js
+builder.withPacks(policy).options({ profile: ['wcag22-aa', 'acme-policy'] });
 ```
 
 ### `formatFailures(resultOrChecks, { outcomes?, howToCheck?, hookReasonCodes? })`

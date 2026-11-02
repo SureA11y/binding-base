@@ -563,3 +563,36 @@ test('_coreEvidenceState(): core\'s evidenceState, sent into a page, applies the
     dom.window.close();
   }
 });
+
+// A scan of several profiles (core 1.15): the binding passes the list as it
+// is, the in-page runner merges, and a profile it couldn't apply is a gap.
+const HAS_PROFILE_LISTS = (() => {
+  const page = pageScan();
+  try {
+    const r = quietly(() =>
+      page.scan(new A11yCoreBuilderBase().options({ profile: ['wcag22-aa', 'nowhere-1.0'] }))
+    );
+    return !!(r.engine && Array.isArray(r.engine.profilesNotRun));
+  } finally {
+    page.close();
+  }
+})();
+const NEEDS_1_15 = HAS_PROFILE_LISTS ? false : 'needs @surea11y/core 1.15.0 (several profiles)';
+
+test('core contract: a profile a scan of several did not run is a profile-not-run gap', { skip: NEEDS_1_15 }, () => {
+  const page = pageScan();
+  try {
+    const result = quietly(() =>
+      page.scan(new A11yCoreBuilderBase().options({ profile: ['wcag22-aa', 'nowhere-1.0'] }))
+    );
+    assert.deepStrictEqual(result.engine.profiles, ['wcag22-aa']);
+    const gaps = getScanGaps(result);
+    assert.deepStrictEqual(
+      gaps.map((g) => [g.kind, g.profile.name, g.profile.reason]),
+      [['profile-not-run', 'nowhere-1.0', 'unknown-profile']]
+    );
+    assert.match(formatFailures(result), /Profile "nowhere-1\.0" was asked for and did not run/);
+  } finally {
+    page.close();
+  }
+});

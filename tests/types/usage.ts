@@ -66,6 +66,7 @@ builder._warnScanGaps(result, '@surea11y/example');
 for (const gap of getScanGaps(result)) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
   else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
+  else if (gap.kind === 'profile-not-run') gap.profile.reason.toUpperCase();
   else gap.selectors.join(', ');
 }
 
