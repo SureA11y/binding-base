@@ -140,3 +140,41 @@ test('formatFailures(result): no findings beside a skipped pack or custom rule s
   );
   assert.match(formatFailures(result({ contextMatch: { elementCount: 1, unmatchedSelectors: ['#nav'] } })), /^No accessibility violations found in what was scanned\.\n\n/);
 });
+
+test('getScanGaps(): one gap per profile a scan of several did not run, with why', () => {
+  const engine = {
+    version: '1.15.0',
+    profiles: ['wcag22-aa'],
+    profilesNotRun: [
+      { profile: 'wai-aria-1.2', reason: 'pack-skipped' },
+      { profile: 'nowhere-1.0', reason: 'unknown-profile' },
+      { profile: 'acme-policy', reason: 'overridden-by-selection' },
+      { profile: 'other-1.0', reason: 'something-new' }
+    ]
+  };
+  assert.deepStrictEqual(getScanGaps(result({ engine })), [
+    {
+      kind: 'profile-not-run',
+      profile: { name: 'wai-aria-1.2', reason: 'pack-skipped' },
+      message: 'Profile "wai-aria-1.2" was asked for and did not run: its pack did not run.'
+    },
+    {
+      kind: 'profile-not-run',
+      profile: { name: 'nowhere-1.0', reason: 'unknown-profile' },
+      message: 'Profile "nowhere-1.0" was asked for and did not run: no such profile in core or the packs given.'
+    },
+    {
+      kind: 'profile-not-run',
+      profile: { name: 'acme-policy', reason: 'overridden-by-selection' },
+      message:
+        'Profile "acme-policy" was asked for and did not run: the rules chosen in runOnly or options() select the rules instead.'
+    },
+    {
+      kind: 'profile-not-run',
+      profile: { name: 'other-1.0', reason: 'something-new' },
+      message: 'Profile "other-1.0" was asked for and did not run: something-new.'
+    }
+  ]);
+  // A scan of one profile, or of several that all ran, has none.
+  assert.deepStrictEqual(getScanGaps(result({ engine: { profiles: ['wcag22-aa', 'wai-aria-1.2'] } })), []);
+});
