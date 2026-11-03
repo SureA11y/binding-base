@@ -289,6 +289,10 @@ export interface ScanResultLike {
     version?: string;
     /** The level of the criteria the scan reports (@surea11y/core 1.12.0 and later). */
     wcagLevel?: WcagLevel;
+    /** A scan of several profiles: those it ran (@surea11y/core 1.15 and later). */
+    profiles?: string[];
+    /** A scan of several profiles: those asked for and not run, and why (@surea11y/core 1.15 and later). */
+    profilesNotRun?: Array<{ profile: string; reason: 'unknown-profile' | 'pack-skipped' | 'overridden-by-selection' | string }>;
     environment?: {
       /** Whether the page was shown in forced colors (@surea11y/core 1.12.0 and later). */
       forcedColors?: 'active' | 'none';
@@ -309,7 +313,7 @@ export type ScanGap =
   | { kind: 'context-partly-not-found'; message: string; selectors: string[] }
   | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } }
   | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } }
-  | { kind: 'profile-not-run'; message: string; profile: { name: string | null; reason: string } };
+  | { kind: 'profile-not-run'; message: string; profile: { name: string; reason: string } };
 
 export type ScanNote =
   | { kind: 'forced-colors'; message: string; pageCss?: true }

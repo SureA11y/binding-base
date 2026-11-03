@@ -217,7 +217,7 @@ A page can fail differently in dark mode or at phone width: text that reads well
 A binding's `analyze()` calls **`_scanUnderConditions(scan, { save, apply, restore })`** with its own driver steps: `save()` resolves to what `restore(state)` needs, `apply(condition)` sets the scheme and width, and `restore` runs even when a scan throws. It refuses `.frames(true)` with conditions for now. It returns **`mergeConditionResults()`** of the scans, one result:
 
 - a rule's outcome is its worst across the scans (`fail`, `cantTell`, `pass`, `notApplicable`), so a contrast failure only in dark mode fails the rule;
-- an occurrence is kept once per element, rule and reason code, with the `conditions` it appeared under (`['default', 'dark']`), which `formatFailures()` prints as `seen in: default, dark`;
+- an occurrence is kept once per element, rule and reason code, with the `conditions` it appeared under (`['default', 'dark']`), which `formatFailures()` prints as `seen in: default; dark`;
 - `conditionRuns` lists each scan's condition and `engine.environment`.
 
 `formatFailures()`, `getGatingFailures()` and the test matchers read it as any result. A picture taken by `.screenshots()` under a condition has the condition in its file name, so it doesn't overwrite the default scan's. `readConditions()` and `conditionLabel()` (`'dark'`, `'width 320'`, `'dark, width 320'`) are exported for bindings that run their own loop, as Cypress does.

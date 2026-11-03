@@ -36,7 +36,7 @@ function quoteList(values) {
  *
  * @param {object} result one scan result (for a frames(true) scan, call it
  *   on `topFrame` and on each entry of `frames` that has `checksResults`)
- * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string }, pack?: { name: (string|null), reason: string } }>}
+ * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string }, pack?: { name: (string|null), reason: string }, profile?: { name: string, reason: string } }>}
  */
 function getScanGaps(result) {
   if (!result || typeof result !== 'object' || !Array.isArray(result.checksResults)) {
@@ -93,7 +93,7 @@ function getScanGaps(result) {
   const REASONS = {
     'unknown-profile': 'no such profile in core or the packs given',
     'pack-skipped': 'its pack did not run',
-    'overridden-by-selection': 'the rules chosen in runOnly or options() select the rules instead'
+    'overridden-by-selection': 'the rules chosen in runOnly, or by rules, tags or tests in the engine options, select the rules instead'
   };
   for (const p of notRun) {
     const profile = p && typeof p.profile === 'string' && p.profile.trim() ? p.profile.trim() : null;

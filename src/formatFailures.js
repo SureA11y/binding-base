@@ -206,7 +206,8 @@ function formatChecks(checksResults, wanted, howToCheck, level) {
     if (location) lines.push(`   at ${location}`);
     // Scanned under conditions (.conditions()): where it was found.
     if (Array.isArray(occurrence.conditions) && occurrence.conditions.length) {
-      lines.push(`   seen in: ${occurrence.conditions.join(', ')}`);
+      // Joined with semicolons: a condition's own label has commas ("dark, width 320").
+      lines.push(`   seen in: ${occurrence.conditions.join('; ')}`);
     }
     if (occurrence.hint) lines.push(`   ${occurrence.hint}`);
     lines.push(...questionLines(check, occurrence, howToCheck));

@@ -167,7 +167,7 @@ test('getScanGaps(): one gap per profile a scan of several did not run, with why
       kind: 'profile-not-run',
       profile: { name: 'acme-policy', reason: 'overridden-by-selection' },
       message:
-        'Profile "acme-policy" was asked for and did not run: the rules chosen in runOnly or options() select the rules instead.'
+        'Profile "acme-policy" was asked for and did not run: the rules chosen in runOnly, or by rules, tags or tests in the engine options, select the rules instead.'
     },
     {
       kind: 'profile-not-run',
