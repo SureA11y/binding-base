@@ -196,3 +196,34 @@ test('builder: a condition the driver refuses in save() stops before any scan', 
   assert.strictEqual(scans, 0);
   assert.strictEqual(restored, false);
 });
+
+test("mergeConditionResults(): a scan of several profiles keeps each profile's worst verdict", () => {
+  const scan = (outcome) => ({
+    checksResults: [
+      {
+        ruleId: 'contrast-minimum',
+        outcome,
+        outcomeNormalized: outcome,
+        checkOutcome: outcome,
+        verdicts: { 'wcag22-aa': outcome, section508: outcome },
+        occurrences: []
+      }
+    ],
+    profiles: {
+      'wcag22-aa': { wcagVersion: '2.2', rulesResults: { 'wcag-1.4.3-contrast-minimum': outcome } },
+      section508: { wcagVersion: '2.0', rulesResults: { 'wcag-1.4.3-contrast-minimum': outcome } }
+    },
+    engine: {}
+  });
+  const merged = mergeConditionResults([
+    { condition: 'default', result: scan('pass') },
+    { condition: 'dark', result: scan('fail') }
+  ]);
+  const check = merged.checksResults[0];
+  assert.equal(check.outcome, 'fail');
+  assert.equal(check.outcomeNormalized, 'fail');
+  assert.equal(check.checkOutcome, 'fail');
+  assert.deepEqual(check.verdicts, { 'wcag22-aa': 'fail', section508: 'fail' });
+  assert.equal(merged.profiles.section508.rulesResults['wcag-1.4.3-contrast-minimum'], 'fail');
+  assert.equal(merged.profiles.section508.wcagVersion, '2.0');
+});
