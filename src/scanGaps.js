@@ -90,8 +90,14 @@ function getScanGaps(result) {
 
   const notRun =
     result.engine && Array.isArray(result.engine.profilesNotRun) ? result.engine.profilesNotRun : [];
+  // Whether the scan was given packs: those that ran, or were skipped.
+  const hadPacks =
+    (result.engine && Array.isArray(result.engine.packs) && result.engine.packs.length > 0) ||
+    skippedPacks.length > 0;
   const REASONS = {
-    'unknown-profile': 'no such profile in core or the packs given',
+    'unknown-profile': hadPacks
+      ? 'no such profile in core or the packs given'
+      : "no such profile in core (a pack's profile needs its pack)",
     'pack-skipped': 'its pack did not run',
     'overridden-by-selection': 'the rules chosen in runOnly, or by rules, tags or tests in the engine options, select the rules instead'
   };

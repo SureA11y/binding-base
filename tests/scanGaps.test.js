@@ -145,6 +145,7 @@ test('getScanGaps(): one gap per profile a scan of several did not run, with why
   const engine = {
     version: '1.15.0',
     profiles: ['wcag22-aa'],
+    packs: ['@acme/pack@1.0.0'],
     profilesNotRun: [
       { profile: 'wai-aria-1.2', reason: 'pack-skipped' },
       { profile: 'nowhere-1.0', reason: 'unknown-profile' },
@@ -175,6 +176,12 @@ test('getScanGaps(): one gap per profile a scan of several did not run, with why
       message: 'Profile "other-1.0" was asked for and did not run: something-new.'
     }
   ]);
+  // With no pack given, a profile no one has is said to be core's to have.
+  const noPacks = { version: '1.15.0', profiles: ['wcag22-aa'], profilesNotRun: [{ profile: 'nowhere-1.0', reason: 'unknown-profile' }] };
+  assert.strictEqual(
+    getScanGaps(result({ engine: noPacks }))[0].message,
+    'Profile "nowhere-1.0" was asked for and did not run: no such profile in core (a pack\'s profile needs its pack).'
+  );
   // A scan of one profile, or of several that all ran, has none.
   assert.deepStrictEqual(getScanGaps(result({ engine: { profiles: ['wcag22-aa', 'wai-aria-1.2'] } })), []);
   // An entry naming no profile, which core never writes, is no gap.
