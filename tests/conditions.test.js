@@ -8,7 +8,8 @@ const {
   conditionLabel,
   mergeConditionResults,
   formatFailures,
-  getScanGaps
+  getScanGaps,
+  getGatingFailures
 } = require('../src/index.js');
 
 test('readConditions(): checks each condition, and reads null or [] as none', () => {
@@ -348,4 +349,17 @@ test("mergeConditionResults(): an element's verdicts are each profile's worst, a
   assert.deepEqual(merged.checksResults[0].occurrences[0].verdicts, { a: 'fail', b: 'pass' });
   merged.checksResults[0].occurrences[0].conditions = ['light', 'dark, width 320'];
   assert.match(formatFailures(merged), /seen in: light; dark, width 320/);
+});
+
+test("mergeConditionResults(): a rule failing under one condition takes that scan's severity, and is gated by it", () => {
+  const merged = mergeConditionResults([
+    run('default', [{ ruleId: 'img-alt-present', outcome: 'notApplicable', severity: 'minor', occurrences: [] }]),
+    run('dark', [{ ruleId: 'img-alt-present', outcome: 'fail', severity: 'serious', ruleSeverity: 'serious', occurrences: [occ('img', 'NO_ALT')] }]),
+    run('width 320', [{ ruleId: 'img-alt-present', outcome: 'fail', severity: 'critical', ruleSeverity: 'critical', occurrences: [occ('img', 'NO_ALT')] }])
+  ]);
+  const [check] = merged.checksResults;
+  assert.strictEqual(check.outcome, 'fail');
+  assert.strictEqual(check.severity, 'critical');
+  assert.strictEqual(check.ruleSeverity, 'critical');
+  assert.deepStrictEqual(getGatingFailures(merged, { failOnSeverity: 'serious' }).map((c) => c.ruleId), ['img-alt-present']);
 });

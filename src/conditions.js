@@ -1,11 +1,17 @@
 'use strict';
 
 const { occurrenceOutcome } = require('./review');
+const { SEVERITIES } = require('./severityGate');
 
 // Scanning a page under conditions: a color scheme and a viewport width, as
 // .conditions() takes them, and the merge of the scans into one result.
 
 const COLOR_SCHEMES = ['light', 'dark'];
+
+// The more severe of two severities, as the gate ranks them.
+function moreSevere(a, b) {
+  return SEVERITIES.indexOf(b) > SEVERITIES.indexOf(a) ? b : a;
+}
 
 /**
  * The conditions .conditions() was given, checked: each an object with
@@ -79,7 +85,8 @@ function occurrenceKey(ruleId, occurrence) {
  * among the scan's findings of those, each
  * listing the `conditions` it appeared under, in run order. A rule that
  * failed or asked keeps only the occurrences of the scans where it did. A rule a scan
- * left out (reportOnly()) is taken from the scans that have it. Composite
+ * left out (reportOnly()) is taken from the scans that have it, and its
+ * severity from the scans with its worst outcome. Composite
  * results take the worst one's. An occurrence keeps its own tier
  * (`occurrenceOutcome`), the worst it had in a scan, so a question isn't
  * counted as a failure once another scan fails its rule. What a scan left
@@ -122,6 +129,13 @@ function mergeConditionResults(runs) {
           current.outcome = check.outcome;
           if ('outcomeNormalized' in current) current.outcomeNormalized = normalized(check.outcome);
           if (check.error) current.error = check.error;
+          // The severity is the worst scan's: a rule inapplicable by
+          // default reads minor, but fails as serious under another condition.
+          if (check.severity) current.severity = check.severity;
+          if (check.ruleSeverity) current.ruleSeverity = check.ruleSeverity;
+        } else if (rank(check.outcome) === rank(current.outcome)) {
+          if (check.severity) current.severity = moreSevere(current.severity, check.severity);
+          if (check.ruleSeverity) current.ruleSeverity = moreSevere(current.ruleSeverity, check.ruleSeverity);
         }
         if (check.checkOutcome && rank(check.checkOutcome) > rank(current.checkOutcome)) {
           current.checkOutcome = check.checkOutcome;
