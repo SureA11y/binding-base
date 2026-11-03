@@ -391,9 +391,12 @@ export function readConditions(list: unknown, where?: string): ScanCondition[] |
 /** A condition's label, as occurrences list it: 'dark', 'width 320', 'dark, width 320'; 'default' for null. */
 export function conditionLabel(condition: ScanCondition | null): string;
 
-/** How a frame is read: left out, or scanned as aria-hidden (core's embeddedAriaHidden), or as it is. */
-export type FrameReading = { skipped: 'hidden' | 'excluded' | 'outside-scope' } | { ariaHidden: true } | Record<string, never>;
-export interface FrameReadingOptions { excludeSelectors: string[]; includeHidden: boolean; scope: string[] | null }
+/**
+ * How a frame is read: left out, or what it is under, scanned as aria-hidden
+ * (core's embeddedAriaHidden), as inert (embeddedInert), or as it is.
+ */
+export type FrameReading = { skipped: 'hidden' | 'excluded' | 'outside-scope' } | { ariaHidden?: true; inert?: true };
+export interface FrameReadingOptions { excludeSelectors: string[]; includeHidden: boolean; includeShadowDom: boolean; scope: string[] | null }
 /** In the page: a document's iframes and frames, through open shadow roots. */
 export function findFrameElements(root?: unknown): unknown[];
 /** In the page, on a frame's element in its parent document: how the frame is read. */
@@ -402,8 +405,16 @@ export function readFrameElement(el: unknown, options?: Partial<FrameReadingOpti
 export function isFrameDocumentEmpty(doc?: unknown): boolean;
 /** readFrameElement's options from the scan's engine options and include(), for a frame of the top page or not. */
 export function frameReadingOptions(engineOptions: object, contextSelector: string | string[] | null, topLevel: boolean): FrameReadingOptions;
-/** The engine options a frame is scanned with: embeddedAriaHidden for an aria-hidden frame. */
-export function frameEngineOptions<T extends object>(engineOptions: T, reading: FrameReading | null | undefined): T & { embeddedAriaHidden?: true };
+/** What a frame is under, with what the frames around it are under. */
+export function inheritFrameReading(
+  above: { ariaHidden?: boolean; inert?: boolean } | null | undefined,
+  reading: { ariaHidden?: boolean; inert?: boolean } | null | undefined
+): { ariaHidden: boolean; inert: boolean };
+/** The engine options a frame is scanned with: embeddedAriaHidden and embeddedInert as it is under, never topLevelDocument. */
+export function frameEngineOptions<T extends object>(
+  engineOptions: T,
+  reading: { ariaHidden?: boolean; inert?: boolean } | null | undefined
+): T & { embeddedAriaHidden?: true; embeddedInert?: true };
 
 /**
  * One result from the scans of a page under several conditions, the default

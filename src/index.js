@@ -31,6 +31,7 @@ const {
   readFrameElement,
   isFrameDocumentEmpty,
   frameReadingOptions,
+  inheritFrameReading,
   frameEngineOptions
 } = require('./frames');
 
@@ -56,6 +57,7 @@ module.exports = {
   readFrameElement,
   isFrameDocumentEmpty,
   frameReadingOptions,
+  inheritFrameReading,
   frameEngineOptions,
   getScanGaps,
   getScanNotes,

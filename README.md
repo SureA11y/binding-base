@@ -222,13 +222,14 @@ A binding's `analyze()` calls **`_scanUnderConditions(scan, { save, apply, resto
 
 `formatFailures()`, `getGatingFailures()` and the test matchers read it as any result. A picture taken by `.screenshots()` under a condition has the condition in its file name, so it doesn't overwrite the default scan's. `readConditions()` and `conditionLabel()` (`'dark'`, `'width 320'`, `'dark, width 320'`) are exported for bindings that run their own loop, as Cypress does.
 
-### Frames: `findFrameElements()`, `readFrameElement()`, `isFrameDocumentEmpty()`, `frameReadingOptions()` and `frameEngineOptions()`
+### Frames: `findFrameElements()`, `readFrameElement()`, `isFrameDocumentEmpty()`, `frameReadingOptions()`, `inheritFrameReading()` and `frameEngineOptions()`
 
-Which frames a `.frames(true)` scan reads, and how, as `@surea11y/core`'s own scan across frames reads them. A frame the page doesn't show (`checkVisibility`, unless `includeHiddenElements`), one in excluded content, one of the top page outside `include()`'s roots, and one whose document shows nothing are left out, with what is in them. A frame under `aria-hidden="true"`, or inside one, is scanned with `engineOptions.embeddedAriaHidden`: what is seen still counts (contrast, focus, keyboard), names and roles don't. The in-page functions are self-contained, for a binding to run with its driver:
+Which frames a `.frames(true)` scan reads, and how, as `@surea11y/core`'s own scan across frames reads them. A frame the page doesn't show (`checkVisibility`) or that an open modal dialog covers, unless `includeHiddenElements`, one in excluded content, one in a shadow root when `includeShadowDom` is `false`, one of the top page outside `include()`'s roots, and one whose document shows nothing are left out, with what is in them. A frame under `aria-hidden="true"`, or inside one, is scanned with `engineOptions.embeddedAriaHidden`: what is seen still counts (contrast, focus, keyboard), names and roles don't. One under `[inert]`, or inside one, is scanned with `engineOptions.embeddedInert` (core 1.15): only how it looks counts. The elements around a frame are read in the flat tree, through slots and shadow hosts, and a frame is never scanned as a page of its own (`topLevelDocument` is not passed on). The in-page functions are self-contained, for a binding to run with its driver:
 
 - `findFrameElements(root?)` lists a document's `<iframe>` and `<frame>` elements, through open shadow roots;
-- `readFrameElement(el, frameReadingOptions(engineOptions, contextSelector, topLevel))`, run on a frame's element in its parent document, gives `{ skipped }`, `{ ariaHidden: true }` or `{}`;
+- `readFrameElement(el, frameReadingOptions(engineOptions, contextSelector, topLevel))`, run on a frame's element in its parent document, gives `{ skipped }`, or what it is under: `{ ariaHidden: true }`, `{ inert: true }`, both, or `{}`;
 - `isFrameDocumentEmpty()`, run in the frame's document;
+- `inheritFrameReading(above, reading)` adds what the frame it is in is under: `{ ariaHidden, inert }`, for its own frames to inherit;
 - `frameEngineOptions(engineOptions, reading)` gives the options to scan the frame with.
 
 ### Rule and tag lists
