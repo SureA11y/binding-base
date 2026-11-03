@@ -147,6 +147,11 @@ function mergeConditionResults(runs) {
         if (seen) {
           if (!seen.occurrence.conditions.includes(condition)) seen.occurrence.conditions.push(condition);
           seen.rank = Math.max(seen.rank, rank(check.outcome));
+          // A scan of several profiles: each profile's verdict on the
+          // element is its worst under any condition.
+          if (occurrence.verdicts && typeof occurrence.verdicts === 'object') {
+            seen.occurrence.verdicts = worstOf(seen.occurrence.verdicts, occurrence.verdicts);
+          }
           if (tier && (!seen.tier || rank(tier) > rank(seen.tier))) seen.tier = tier;
         } else {
           byKey.set(key, { occurrence: { ...occurrence, conditions: [condition] }, rank: rank(check.outcome), tier });

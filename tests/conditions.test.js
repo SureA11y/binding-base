@@ -329,3 +329,23 @@ test('mergeConditionResults(): several findings of one rule on one element for o
     ['default', 'dark']
   ]);
 });
+
+test("mergeConditionResults(): an element's verdicts are each profile's worst, and its conditions are told apart", () => {
+  const scan = (verdict) => ({
+    checksResults: [
+      {
+        ruleId: 'contrast',
+        outcome: 'fail',
+        verdicts: { a: verdict, b: 'pass' },
+        occurrences: [{ selector: 'p', verdicts: { a: verdict, b: 'pass' } }]
+      }
+    ]
+  });
+  const merged = mergeConditionResults([
+    { condition: { colorScheme: 'light' }, result: scan('pass') },
+    { condition: { colorScheme: 'dark', width: 320 }, result: scan('fail') }
+  ]);
+  assert.deepEqual(merged.checksResults[0].occurrences[0].verdicts, { a: 'fail', b: 'pass' });
+  merged.checksResults[0].occurrences[0].conditions = ['light', 'dark, width 320'];
+  assert.match(formatFailures(merged), /seen in: light; dark, width 320/);
+});
