@@ -1,5 +1,7 @@
 'use strict';
 
+const { occurrenceOutcome } = require('./review');
+
 // Scanning a page under conditions: a color scheme and a viewport width, as
 // .conditions() takes them, and the merge of the scans into one result.
 
@@ -77,8 +79,14 @@ function occurrenceKey(ruleId, occurrence) {
  * listing the `conditions` it appeared under, in run order. A rule that
  * failed or asked keeps only the occurrences of the scans where it did. A rule a scan
  * left out (reportOnly()) is taken from the scans that have it. Composite
- * results take the worst one's. `conditionRuns` lists each scan's condition
- * and `engine.environment`.
+ * results take the worst one's. An occurrence keeps its own tier
+ * (`occurrenceOutcome`), the worst it had in a scan, so a question isn't
+ * counted as a failure once another scan fails its rule. What a scan left
+ * out is kept from every scan: `skippedCustomRules`, `skippedPacks` and
+ * `engine.profilesNotRun` list each entry once, and `contextMatch` is the
+ * narrowest scope any scan had (its least `elementCount`, every unmatched
+ * selector). `conditionRuns` lists each scan's condition and
+ * `engine.environment`.
  */
 // What core writes as outcomeNormalized: notApplicable reads inapplicable.
 function normalized(outcome) {
@@ -126,12 +134,14 @@ function mergeConditionResults(runs) {
       for (const occurrence of check.occurrences || []) {
         if (!occurrence || typeof occurrence !== 'object') continue;
         const key = occurrenceKey(check.ruleId, occurrence);
+        const tier = occurrenceOutcome(check, occurrence);
         const seen = byKey.get(key);
         if (seen) {
           if (!seen.occurrence.conditions.includes(condition)) seen.occurrence.conditions.push(condition);
           seen.rank = Math.max(seen.rank, rank(check.outcome));
+          if (tier && (!seen.tier || rank(tier) > rank(seen.tier))) seen.tier = tier;
         } else {
-          byKey.set(key, { occurrence: { ...occurrence, conditions: [condition] }, rank: rank(check.outcome) });
+          byKey.set(key, { occurrence: { ...occurrence, conditions: [condition] }, rank: rank(check.outcome), tier });
         }
       }
     }
@@ -144,7 +154,16 @@ function mergeConditionResults(runs) {
     const kept = [...occurrencesByRule.get(check.ruleId).values()].filter(
       (entry) => merged < OUTCOME_RANK.cantTell || entry.rank >= OUTCOME_RANK.cantTell
     );
-    return { ...check, occurrences: kept.map((entry) => entry.occurrence) };
+    // Each occurrence's own tier, where it differs from the merged rule's:
+    // a question stays a question when another scan fails the rule.
+    const occurrences = kept.map((entry) => {
+      const { occurrence, tier } = entry;
+      if (tier && (occurrence.occurrenceOutcome || tier !== check.outcome)) {
+        return { ...occurrence, occurrenceOutcome: tier };
+      }
+      return occurrence;
+    });
+    return { ...check, occurrences };
   });
 
   let rulesResults = base.rulesResults;
@@ -176,8 +195,53 @@ function mergeConditionResults(runs) {
     }
   }
 
+  // What any scan left out, each entry once: a gap under one condition is a
+  // gap of the merged result.
+  const results = runs.map((run) => run && run.result).filter(Boolean);
+  const gapFields = {};
+  const unionOf = (lists, keyOf) => {
+    const out = new Map();
+    for (const list of lists) {
+      for (const entry of list) {
+        const key = keyOf(entry);
+        if (!out.has(key)) out.set(key, entry);
+      }
+    }
+    return [...out.values()];
+  };
+  for (const field of ['skippedCustomRules', 'skippedPacks']) {
+    const lists = results.map((r) => r[field]).filter(Array.isArray);
+    if (lists.length) {
+      gapFields[field] = unionOf(lists, (e) => JSON.stringify(e && (e.id !== undefined ? e.id : e.name)));
+    }
+  }
+  const notRunLists = results.map((r) => r.engine && r.engine.profilesNotRun).filter(Array.isArray);
+  const engine =
+    notRunLists.length && base.engine && typeof base.engine === 'object'
+      ? {
+          ...base.engine,
+          profilesNotRun: unionOf(notRunLists, (e) =>
+            String(e && e.profile).trim().toLowerCase()
+          )
+        }
+      : base.engine;
+  const matches = results.map((r) => r.contextMatch).filter((m) => m && typeof m === 'object');
+  if (matches.length) {
+    const counts = matches.map((m) => m.elementCount).filter((n) => typeof n === 'number');
+    gapFields.contextMatch = {
+      ...base.contextMatch,
+      ...(counts.length ? { elementCount: Math.min(...counts) } : {}),
+      unmatchedSelectors: unionOf(
+        matches.map((m) => (Array.isArray(m.unmatchedSelectors) ? m.unmatchedSelectors : [])),
+        (selector) => selector
+      )
+    };
+  }
+
   return {
     ...base,
+    ...gapFields,
+    ...(engine !== undefined ? { engine } : {}),
     checksResults,
     ...(profiles !== undefined ? { profiles } : {}),
     ...(rulesResults !== undefined ? { rulesResults } : {}),
