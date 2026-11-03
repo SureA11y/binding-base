@@ -227,3 +227,35 @@ test("mergeConditionResults(): a scan of several profiles keeps each profile's w
   assert.equal(merged.profiles.section508.rulesResults['wcag-1.4.3-contrast-minimum'], 'fail');
   assert.equal(merged.profiles.section508.wcagVersion, '2.0');
 });
+
+test('mergeConditionResults(): several findings of one rule on one element for one reason stay apart', () => {
+  const finding = (attr) => ({
+    selector: 'main > button',
+    summary: `${attr} is not a valid value`,
+    data: { details: { reasonCode: 'ARIA_VALUE_INVALID', attribute: attr } }
+  });
+  const scan = () => ({
+    checksResults: [
+      {
+        ruleId: 'aria-valid-attr-value',
+        outcome: 'fail',
+        occurrences: [finding('aria-pressed'), finding('aria-expanded'), finding('aria-checked')]
+      }
+    ],
+    engine: {}
+  });
+  const merged = mergeConditionResults([
+    { condition: 'default', result: scan() },
+    { condition: 'dark', result: scan() }
+  ]);
+  const occurrences = merged.checksResults[0].occurrences;
+  assert.deepEqual(
+    occurrences.map((o) => o.data.details.attribute),
+    ['aria-pressed', 'aria-expanded', 'aria-checked']
+  );
+  assert.deepEqual(occurrences.map((o) => o.conditions), [
+    ['default', 'dark'],
+    ['default', 'dark'],
+    ['default', 'dark']
+  ]);
+});
