@@ -26,6 +26,13 @@ const { cropViewportScreenshot } = require('./png');
 const { findUnreadableStyleSheets, fetchStyleSheetTexts } = require('./styleSheets');
 const { SEVERITIES, getGatingFailures } = require('./severityGate');
 const { readConditions, conditionLabel, mergeConditionResults } = require('./conditions');
+const {
+  findFrameElements,
+  readFrameElement,
+  isFrameDocumentEmpty,
+  frameReadingOptions,
+  frameEngineOptions
+} = require('./frames');
 
 module.exports = {
   A11yCoreBuilderBase,
@@ -45,6 +52,11 @@ module.exports = {
   readConditions,
   conditionLabel,
   mergeConditionResults,
+  findFrameElements,
+  readFrameElement,
+  isFrameDocumentEmpty,
+  frameReadingOptions,
+  frameEngineOptions,
   getScanGaps,
   getScanNotes,
   queryOccurrenceElement,

@@ -171,3 +171,18 @@ test('formatFailures(result, { hookReasonCodes }): the hook notes where core can
   assert.match(text, /judged without seeing the listeners the page adds from script/);
   assert.match(text, /judged without a record of what the page's live regions were given/);
 });
+
+test('getScanNotes(): an internals question counts where its rule fails on another element', () => {
+  const mixed = {
+    ruleId: 'button-name-present',
+    outcome: 'fail',
+    severity: 'serious',
+    occurrences: [
+      { selector: 'button', data: { details: { reasonCode: 'name_missing' } } },
+      { selector: 'x-button', occurrenceOutcome: 'cantTell', data: { details: { reasonCode: 'name_internals' } } }
+    ]
+  };
+  const [note] = getScanNotes(result({ layout: false }, [mixed]));
+  assert.strictEqual(note && note.kind, 'internals-hook');
+  assert.strictEqual(note.elementCount, 1);
+});

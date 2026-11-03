@@ -391,6 +391,20 @@ export function readConditions(list: unknown, where?: string): ScanCondition[] |
 /** A condition's label, as occurrences list it: 'dark', 'width 320', 'dark, width 320'; 'default' for null. */
 export function conditionLabel(condition: ScanCondition | null): string;
 
+/** How a frame is read: left out, or scanned as aria-hidden (core's embeddedAriaHidden), or as it is. */
+export type FrameReading = { skipped: 'hidden' | 'excluded' | 'outside-scope' } | { ariaHidden: true } | Record<string, never>;
+export interface FrameReadingOptions { excludeSelectors: string[]; includeHidden: boolean; scope: string[] | null }
+/** In the page: a document's iframes and frames, through open shadow roots. */
+export function findFrameElements(root?: unknown): unknown[];
+/** In the page, on a frame's element in its parent document: how the frame is read. */
+export function readFrameElement(el: unknown, options?: Partial<FrameReadingOptions>): FrameReading;
+/** In the frame's document: whether it shows nothing. */
+export function isFrameDocumentEmpty(doc?: unknown): boolean;
+/** readFrameElement's options from the scan's engine options and include(), for a frame of the top page or not. */
+export function frameReadingOptions(engineOptions: object, contextSelector: string | string[] | null, topLevel: boolean): FrameReadingOptions;
+/** The engine options a frame is scanned with: embeddedAriaHidden for an aria-hidden frame. */
+export function frameEngineOptions<T extends object>(engineOptions: T, reading: FrameReading | null | undefined): T & { embeddedAriaHidden?: true };
+
 /**
  * One result from the scans of a page under several conditions, the default
  * scan first: each rule's worst outcome, occurrences merged by element, rule
