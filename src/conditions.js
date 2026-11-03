@@ -75,7 +75,8 @@ function occurrenceKey(ruleId, occurrence) {
  * it was ('default'). The default scan's result is the base. Each rule's
  * outcome is its worst across the scans (fail, cantTell, pass,
  * notApplicable), so a rule failing only in dark mode fails; its
- * occurrences are merged, one per element, rule and reason code, each
+ * occurrences are merged, one per element, rule, reason code and place
+ * among the scan's findings of those, each
  * listing the `conditions` it appeared under, in run order. A rule that
  * failed or asked keeps only the occurrences of the scans where it did. A rule a scan
  * left out (reportOnly()) is taken from the scans that have it. Composite
@@ -131,9 +132,16 @@ function mergeConditionResults(runs) {
         }
       }
       const byKey = occurrencesByRule.get(check.ruleId);
+      // Several findings of one rule on one element for one reason (a
+      // button with three invalid ARIA values) are told apart by their
+      // order in the scan, which each condition's scan of the page shares.
+      const nth = new Map();
       for (const occurrence of check.occurrences || []) {
         if (!occurrence || typeof occurrence !== 'object') continue;
-        const key = occurrenceKey(check.ruleId, occurrence);
+        const base = occurrenceKey(check.ruleId, occurrence);
+        const n = (nth.get(base) || 0) + 1;
+        nth.set(base, n);
+        const key = `${base}#${n}`;
         const tier = occurrenceOutcome(check, occurrence);
         const seen = byKey.get(key);
         if (seen) {
