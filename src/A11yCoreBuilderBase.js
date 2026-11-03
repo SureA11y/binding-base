@@ -471,7 +471,7 @@ class A11yCoreBuilderBase {
    * Whether to fetch, from Node, the style sheets the page can't read
    * (another origin's) and give core their text, so a rule that reads the
    * CSS, as css-orientation-lock does, can check them instead of asking. On
-   * by default, as axe fetches them; `false` sends no request but the page's
+   * by default; `false` sends no request but the page's
    * own. Needs @surea11y/core 1.14.0 or later, and a binding that implements
    * `_evaluateInFrame()`; otherwise it does nothing.
    * @param {boolean} [enabled=true]

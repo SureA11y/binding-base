@@ -39,6 +39,7 @@ const results = await new A11yCoreBuilder({ page })
     padding: 16,            // px of context around the element; default 0
     highlight: true,        // draw a box around the element; default true
     max: 50,                // at most this many pictures per scan; default 50
+    states: true,           // also picture a finding in the state it was made in; default true (core 1.15.0 and later)
   })
   .analyze();
 ```
@@ -129,7 +130,9 @@ The top-level page is passed first, with an empty path, as every binding scans i
 ### Types
 
 ```ts
-type ScreenshotSkip = 'no-element' | 'page-level' | 'not-rendered' | 'zero-size' | 'off-screen' | 'max-reached' | 'capture-failed';
+type ScreenshotSkip =
+  | 'no-element' | 'page-level' | 'not-rendered' | 'zero-size' | 'off-screen' | 'max-reached' | 'capture-failed'
+  | 'state-not-applied' | 'state-unavailable'; // a picture in a state only
 
 interface ScreenshotOptions {
   dir?: string;
@@ -137,6 +140,7 @@ interface ScreenshotOptions {
   padding?: number;       // default 0, CSS px
   highlight?: boolean;    // default true
   max?: number;           // default 50, pictures per scan
+  states?: boolean;       // default true, also picture a finding in its state (core 1.15.0 and later)
 }
 
 type OccurrenceScreenshot =
@@ -144,10 +148,13 @@ type OccurrenceScreenshot =
   | { buffer: ScreenshotBuffer; box: ScreenshotBox; cropped?: true }
   | { skipped: ScreenshotSkip; error?: string };
 
+// occurrence.stateScreenshots, for a finding made in a state (core's data.details.evidenceState)
+type OccurrenceStateScreenshot = { state: string } & OccurrenceScreenshot;
+
 interface ScreenshotBox { x: number; y: number; width: number; height: number }
 ```
 
-`ScreenshotBuffer` is Node's `Buffer` where its types are installed and a `Uint8Array` elsewhere, so the types need no `@types/node`. `screenshots(options?: ScreenshotOptions | boolean): this` validates its options at the call: an unknown key, an outcome that isn't one of the four, a `padding` that isn't a finite number of 0 or more, a `max` that isn't a whole number of 1 or more, a `highlight` that isn't a boolean, or a `dir` that isn't a non-empty string throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'`, as `wcagLevel()` does.
+`ScreenshotBuffer` is Node's `Buffer` where its types are installed and a `Uint8Array` elsewhere, so the types need no `@types/node`. `screenshots(options?: ScreenshotOptions | boolean): this` validates its options at the call: an unknown key, an outcome that isn't one of the four, a `padding` that isn't a finite number of 0 or more, a `max` that isn't a whole number of 1 or more, a `highlight` or `states` that isn't a boolean, or a `dir` that isn't a non-empty string throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'`, as `wcagLevel()` does.
 
 ### How it is tested
 
