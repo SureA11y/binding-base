@@ -7,7 +7,8 @@ const {
   readConditions,
   conditionLabel,
   mergeConditionResults,
-  formatFailures
+  formatFailures,
+  getScanGaps
 } = require('../src/index.js');
 
 test('readConditions(): checks each condition, and reads null or [] as none', () => {
@@ -226,6 +227,75 @@ test("mergeConditionResults(): a scan of several profiles keeps each profile's w
   assert.deepEqual(check.verdicts, { 'wcag22-aa': 'fail', section508: 'fail' });
   assert.equal(merged.profiles.section508.rulesResults['wcag-1.4.3-contrast-minimum'], 'fail');
   assert.equal(merged.profiles.section508.wcagVersion, '2.0');
+});
+
+test('mergeConditionResults(): a question stays a question when another scan fails its rule', () => {
+  const question = { selector: 'p:nth-of-type(1)' };
+  const merged = mergeConditionResults([
+    {
+      condition: 'light',
+      result: { checksResults: [{ ruleId: 'brand-color', outcome: 'cantTell', occurrences: [question] }] }
+    },
+    {
+      condition: 'dark',
+      result: {
+        checksResults: [
+          {
+            ruleId: 'brand-color',
+            outcome: 'fail',
+            occurrences: [
+              { ...question, occurrenceOutcome: 'cantTell' },
+              { selector: 'p:nth-of-type(2)' }
+            ]
+          }
+        ]
+      }
+    }
+  ]);
+  const check = merged.checksResults[0];
+  assert.equal(check.outcome, 'fail');
+  assert.deepEqual(
+    check.occurrences.map((o) => [o.selector, o.occurrenceOutcome]),
+    [
+      ['p:nth-of-type(1)', 'cantTell'],
+      ['p:nth-of-type(2)', undefined]
+    ]
+  );
+  assert.match(formatFailures(merged), /needs review\).*\n   at p:nth-of-type\(1\)/);
+});
+
+test('mergeConditionResults(): what any scan left out is a gap of the merged result', () => {
+  const scan = (extra) => ({ checksResults: [], engine: { name: 'surea11y' }, ...extra });
+  const merged = mergeConditionResults([
+    {
+      condition: 'default',
+      result: scan({
+        contextMatch: { elementCount: 1, unmatchedSelectors: [] },
+        skippedCustomRules: [{ id: 'a', reason: 'x' }],
+        skippedPacks: []
+      })
+    },
+    {
+      condition: { width: 320 },
+      result: scan({
+        contextMatch: { elementCount: 0, unmatchedSelectors: ['#desk'] },
+        skippedCustomRules: [{ id: 'a', reason: 'x' }, { id: 'b', reason: 'y' }],
+        skippedPacks: [{ name: 'p', reason: 'z' }],
+        engine: { name: 'surea11y', profilesNotRun: [{ profile: 'nope', reason: 'unknown-profile' }] }
+      })
+    }
+  ]);
+  assert.deepEqual(merged.contextMatch, { elementCount: 0, unmatchedSelectors: ['#desk'] });
+  assert.deepEqual(merged.skippedCustomRules.map((r) => r.id), ['a', 'b']);
+  assert.deepEqual(merged.skippedPacks, [{ name: 'p', reason: 'z' }]);
+  assert.deepEqual(merged.engine, {
+    name: 'surea11y',
+    profilesNotRun: [{ profile: 'nope', reason: 'unknown-profile' }]
+  });
+  assert.deepEqual(
+    getScanGaps(merged).map((g) => g.kind),
+    ['context-not-found', 'custom-rule-skipped', 'custom-rule-skipped', 'pack-skipped', 'profile-not-run']
+  );
 });
 
 test('mergeConditionResults(): several findings of one rule on one element for one reason stay apart', () => {
