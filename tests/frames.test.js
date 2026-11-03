@@ -8,6 +8,7 @@ const {
   readFrameElement,
   isFrameDocumentEmpty,
   frameReadingOptions,
+  inheritFrameReading,
   frameEngineOptions
 } = require('../src/index.js');
 
@@ -52,4 +53,38 @@ test('frameEngineOptions(): embeddedAriaHidden for an aria-hidden frame', () => 
   const eo = { locale: 'en' };
   assert.strictEqual(frameEngineOptions(eo, {}), eo);
   assert.deepStrictEqual(frameEngineOptions(eo, { ariaHidden: true }), { locale: 'en', embeddedAriaHidden: true });
+});
+
+test('readFrameElement(): inert, behind an open modal dialog, through a slot, and in a shadow root the scan leaves out', () => {
+  const d = doc(
+    '<div inert><iframe id="inert"></iframe></div>' +
+      '<x-wrap><iframe id="slotted"></iframe></x-wrap>' +
+      '<x-host></x-host>' +
+      '<iframe id="covered"></iframe><dialog id="d"><iframe id="in-dialog"></iframe></dialog>'
+  );
+  d.querySelector('x-wrap').attachShadow({ mode: 'open' }).innerHTML = '<div aria-hidden="true" inert><slot></slot></div>';
+  d.querySelector('x-host').attachShadow({ mode: 'open' }).innerHTML = '<iframe id="shadowed"></iframe>';
+  const shadowed = d.querySelector('x-host').shadowRoot.getElementById('shadowed');
+  const opts = frameReadingOptions({}, null, true);
+  const read = (el, o = opts) => readFrameElement(el, o);
+  assert.deepStrictEqual(read(d.getElementById('inert')), { inert: true });
+  assert.deepStrictEqual(read(d.getElementById('slotted')), { ariaHidden: true, inert: true });
+  assert.deepStrictEqual(read(shadowed), {});
+  assert.deepStrictEqual(read(shadowed, frameReadingOptions({ includeShadowDom: false }, null, true)), { skipped: 'excluded' });
+  // jsdom opens no modal: the dialog says it is one.
+  const dialog = d.getElementById('d');
+  const matches = dialog.matches.bind(dialog);
+  dialog.matches = (selector) => selector === ':modal' || matches(selector);
+  assert.deepStrictEqual(read(d.getElementById('covered')), { skipped: 'hidden' });
+  assert.deepStrictEqual(read(d.getElementById('in-dialog')), {});
+  assert.deepStrictEqual(read(d.getElementById('covered'), frameReadingOptions({ includeHiddenElements: true }, null, true)), {});
+});
+
+test('inheritFrameReading() and frameEngineOptions(): a frame inside an aria-hidden or inert one is read so too, and is no page of its own', () => {
+  assert.deepStrictEqual(inheritFrameReading({ ariaHidden: true, inert: false }, {}), { ariaHidden: true, inert: false });
+  assert.deepStrictEqual(inheritFrameReading(null, { inert: true }), { ariaHidden: false, inert: true });
+  const eo = { excludeSelectors: ['.ad'] };
+  assert.strictEqual(frameEngineOptions(eo, { ariaHidden: false, inert: false }), eo);
+  assert.deepStrictEqual(frameEngineOptions(eo, { inert: true }), { excludeSelectors: ['.ad'], embeddedInert: true });
+  assert.deepStrictEqual(frameEngineOptions({ topLevelDocument: true }, {}), {});
 });

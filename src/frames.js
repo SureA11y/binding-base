@@ -4,14 +4,21 @@
 // @surea11y/core's own scan across frames reads them (core's
 // src/core/frame-scan.js and docs/ENGINE_OPTIONS.md, embeddedAriaHidden):
 //
-// - a frame the page does not show (checkVisibility, unless
-//   includeHiddenElements), one in excluded content, and one of the top page
-//   outside include()'s roots are left out, with their whole content;
+// - a frame the page does not show (checkVisibility) or that an open modal
+//   dialog covers, unless includeHiddenElements, one in excluded content,
+//   one in a shadow root when the scan leaves shadow roots out
+//   (includeShadowDom: false), and one of the top page outside include()'s
+//   roots are left out, with their whole content;
 // - a frame that shows nothing (an empty about:blank) is left out too: a
 //   document with no content has nothing to check;
 // - a frame under aria-hidden="true" is scanned with
 //   engineOptions.embeddedAriaHidden, so what is seen counts and names and
-//   roles don't. A frame inside one inherits it.
+//   roles don't; one under [inert] with engineOptions.embeddedInert, so only
+//   how it looks counts. A frame inside one inherits it (inheritFrameReading).
+//
+// The elements around a frame are read in the flat tree, as the
+// accessibility tree reads them: through the slot an element is assigned
+// to, and out of a shadow root to its host.
 //
 // The in-page functions are self-contained, for a binding to run in the page
 // with its driver (page.evaluate, executeScript, browser.execute) or, in
@@ -40,35 +47,62 @@ function findFrameElements(root) {
 
 /**
  * In the page, on a frame's element in its parent document: how the frame is
- * read. `{ skipped: 'hidden' | 'excluded' | 'outside-scope' }`, `{ ariaHidden:
- * true }`, or `{}`.
+ * read. `{ skipped: 'hidden' | 'excluded' | 'outside-scope' }`, or what it is
+ * under: `{ ariaHidden: true }`, `{ inert: true }`, both, or `{}`.
  * @param {Element} el
- * @param {{ excludeSelectors?: string[], includeHidden?: boolean, scope?: string[]|null }} [options]
+ * @param {{ excludeSelectors?: string[], includeHidden?: boolean, includeShadowDom?: boolean, scope?: string[]|null }} [options]
  *   `scope`: include()'s selectors, for a frame of the top page only.
  */
 function readFrameElement(el, options) {
   const opts = options || {};
-  // Element.closest through the shadow roots it is in, up to the document.
-  const closest = (node, selector) => {
-    for (let n = node; n; ) {
-      if (n.closest && n.closest(selector)) return true;
-      const root = n.getRootNode && n.getRootNode();
-      n = root && root.host ? root.host : null;
+  // The element and those around it in the flat tree, nearest first.
+  const chain = [];
+  let inShadowRoot = false;
+  for (let n = el; n; ) {
+    if (n.nodeType === 1) chain.push(n);
+    let next = (n.nodeType === 1 && n.assignedSlot) || n.parentNode;
+    if (next && next.nodeType === 11) {
+      if (next.host) inShadowRoot = true;
+      next = next.host || null;
     }
-    return false;
-  };
-  try {
-    if (!opts.includeHidden && typeof el.checkVisibility === 'function'
-      && !el.checkVisibility({ visibilityProperty: true })) {
-      return { skipped: 'hidden' };
+    n = next;
+  }
+  const matches = (selector) => chain.some((n) => n.matches && n.matches(selector));
+  if (opts.includeShadowDom === false && inShadowRoot) return { skipped: 'excluded' };
+  if (!opts.includeHidden) {
+    try {
+      if (typeof el.checkVisibility === 'function' && !el.checkVisibility({ visibilityProperty: true })) {
+        return { skipped: 'hidden' };
+      }
+    } catch (e) {
+      // read as shown
     }
-  } catch (e) {
-    // read as shown
+    // An open modal dialog makes everything else inert: a scan taken while
+    // one is open judges the dialog, not what it covers.
+    const modals = [];
+    const visit = (root) => {
+      const dialogs = root.querySelectorAll('dialog');
+      for (let i = 0; i < dialogs.length; i++) {
+        try {
+          if (dialogs[i].matches(':modal')) modals.push(dialogs[i]);
+        } catch (e) {
+          // a browser without :modal
+        }
+      }
+      const all = root.querySelectorAll('*');
+      for (let i = 0; i < all.length; i++) if (all[i].shadowRoot) visit(all[i].shadowRoot);
+    };
+    try {
+      visit(el.ownerDocument);
+    } catch (e) {
+      // read as not covered
+    }
+    if (modals.length && !modals.some((d) => chain.indexOf(d) !== -1)) return { skipped: 'hidden' };
   }
   const excludes = Array.isArray(opts.excludeSelectors) ? opts.excludeSelectors : [];
   for (let i = 0; i < excludes.length; i++) {
     try {
-      if (closest(el, excludes[i])) return { skipped: 'excluded' };
+      if (matches(excludes[i])) return { skipped: 'excluded' };
     } catch (e) {
       // a selector the page can't parse excludes nothing; the scan says so
     }
@@ -78,21 +112,20 @@ function readFrameElement(el, options) {
     let inside = false;
     for (let i = 0; i < scope.length && !inside; i++) {
       try {
-        inside = closest(el, scope[i]);
+        inside = matches(scope[i]);
       } catch (e) {
         // the scan says so of its own scope
       }
     }
     if (!inside) return { skipped: 'outside-scope' };
   }
-  for (let n = el; n; ) {
-    if (n.nodeType === 1) {
-      const v = n.getAttribute('aria-hidden');
-      if (v != null && String(v).trim().toLowerCase() === 'true') return { ariaHidden: true };
-    }
-    n = n.parentNode && n.parentNode.nodeType === 11 ? n.parentNode.host : n.parentNode;
+  const out = {};
+  for (let i = 0; i < chain.length; i++) {
+    const v = chain[i].getAttribute('aria-hidden');
+    if (v != null && String(v).trim().toLowerCase() === 'true') out.ariaHidden = true;
+    if (chain[i].hasAttribute('inert')) out.inert = true;
   }
-  return {};
+  return out;
 }
 
 /**
@@ -120,8 +153,9 @@ function isFrameDocumentEmpty(doc) {
 
 /**
  * The options readFrameElement takes for a frame, from the scan's own:
- * `engineOptions.excludeSelectors` and `includeHiddenElements`, and, for a
- * frame of the top page, include()'s selectors (`contextSelector`).
+ * `engineOptions.excludeSelectors`, `includeHiddenElements` and
+ * `includeShadowDom`, and, for a frame of the top page, include()'s
+ * selectors (`contextSelector`).
  * @param {object} engineOptions
  * @param {string|string[]|null} contextSelector
  * @param {boolean} topLevel whether the frame is the top page's own
@@ -134,16 +168,41 @@ function frameReadingOptions(engineOptions, contextSelector, topLevel) {
   return {
     excludeSelectors: list(eo.excludeSelectors),
     includeHidden: eo.includeHiddenElements === true,
+    includeShadowDom: eo.includeShadowDom !== false,
     scope: scope.length ? scope : null
   };
 }
 
 /**
+ * What a frame is under, with what the frames around it are under: a frame
+ * inside an aria-hidden or inert one is read so too. `{ ariaHidden, inert }`.
+ * @param {{ ariaHidden?: boolean, inert?: boolean }|null} above the frame it is in, as this gives it
+ * @param {{ ariaHidden?: boolean, inert?: boolean }|null} reading readFrameElement's, for this frame
+ */
+function inheritFrameReading(above, reading) {
+  return {
+    ariaHidden: !!((above && above.ariaHidden) || (reading && reading.ariaHidden)),
+    inert: !!((above && above.inert) || (reading && reading.inert))
+  };
+}
+
+/**
  * The engine options a frame is scanned with: the scan's, with
- * embeddedAriaHidden for a frame under aria-hidden="true".
+ * embeddedAriaHidden for a frame under aria-hidden="true" and embeddedInert
+ * for one under [inert] (core 1.15 and later; an older core ignores it).
+ * A frame is no page of its own, whatever the scan said of its own
+ * document (topLevelDocument).
  */
 function frameEngineOptions(engineOptions, reading) {
-  return reading && reading.ariaHidden ? { ...engineOptions, embeddedAriaHidden: true } : engineOptions;
+  const eo = engineOptions && typeof engineOptions === 'object' ? engineOptions : {};
+  const ariaHidden = !!(reading && reading.ariaHidden);
+  const inert = !!(reading && reading.inert);
+  if (!ariaHidden && !inert && !('topLevelDocument' in eo)) return engineOptions;
+  const out = { ...eo };
+  delete out.topLevelDocument;
+  if (ariaHidden) out.embeddedAriaHidden = true;
+  if (inert) out.embeddedInert = true;
+  return out;
 }
 
 module.exports = {
@@ -151,5 +210,6 @@ module.exports = {
   readFrameElement,
   isFrameDocumentEmpty,
   frameReadingOptions,
+  inheritFrameReading,
   frameEngineOptions
 };
