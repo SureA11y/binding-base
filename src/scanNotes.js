@@ -141,8 +141,11 @@ function getScanNotes(result, options) {
   if (environment.internalsHook !== 'early') {
     const elements = new Set();
     for (const check of result.checksResults) {
-      if (!check || check.outcome !== 'cantTell' || !Array.isArray(check.occurrences)) continue;
+      if (!check || !Array.isArray(check.occurrences)) continue;
+      // Each question by its own tier: a rule that fails on another element
+      // still asks about this one.
       for (const occurrence of check.occurrences) {
+        if (occurrenceOutcome(check, occurrence) !== 'cantTell') continue;
         if (!INTERNALS_REASON_CODES.includes(reasonCodeOf(occurrence))) continue;
         elements.add(elementKey(occurrence));
       }

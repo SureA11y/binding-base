@@ -222,6 +222,15 @@ A binding's `analyze()` calls **`_scanUnderConditions(scan, { save, apply, resto
 
 `formatFailures()`, `getGatingFailures()` and the test matchers read it as any result. A picture taken by `.screenshots()` under a condition has the condition in its file name, so it doesn't overwrite the default scan's. `readConditions()` and `conditionLabel()` (`'dark'`, `'width 320'`, `'dark, width 320'`) are exported for bindings that run their own loop, as Cypress does.
 
+### Frames: `findFrameElements()`, `readFrameElement()`, `isFrameDocumentEmpty()`, `frameReadingOptions()` and `frameEngineOptions()`
+
+Which frames a `.frames(true)` scan reads, and how, as `@surea11y/core`'s own scan across frames reads them. A frame the page doesn't show (`checkVisibility`, unless `includeHiddenElements`), one in excluded content, one of the top page outside `include()`'s roots, and one whose document shows nothing are left out, with what is in them. A frame under `aria-hidden="true"`, or inside one, is scanned with `engineOptions.embeddedAriaHidden`: what is seen still counts (contrast, focus, keyboard), names and roles don't. The in-page functions are self-contained, for a binding to run with its driver:
+
+- `findFrameElements(root?)` lists a document's `<iframe>` and `<frame>` elements, through open shadow roots;
+- `readFrameElement(el, frameReadingOptions(engineOptions, contextSelector, topLevel))`, run on a frame's element in its parent document, gives `{ skipped }`, `{ ariaHidden: true }` or `{}`;
+- `isFrameDocumentEmpty()`, run in the frame's document;
+- `frameEngineOptions(engineOptions, reading)` gives the options to scan the frame with.
+
 ### Rule and tag lists
 
 `withTags()`/`disableTags()`/`withRules()`/`disableRules()` take a string or an array of strings, and throw a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call for anything else (`undefined` from a missing config value, an empty string). Since core 1.10.0 the scan itself throws `INVALID_RUN_ONLY` when none of the rule IDs, or none of the tags, in an include list is one it knows, and warns about an unknown one beside known ones.
