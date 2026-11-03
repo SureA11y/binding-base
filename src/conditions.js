@@ -80,6 +80,20 @@ function occurrenceKey(ruleId, occurrence) {
  * results take the worst one's. `conditionRuns` lists each scan's condition
  * and `engine.environment`.
  */
+// What core writes as outcomeNormalized: notApplicable reads inapplicable.
+function normalized(outcome) {
+  return outcome === 'notApplicable' ? 'inapplicable' : outcome;
+}
+
+// Two maps of outcomes by key, each key's worst.
+function worstOf(a, b) {
+  const out = { ...(a || {}) };
+  for (const [key, outcome] of Object.entries(b || {})) {
+    if (!(key in out) || rank(outcome) > rank(out[key])) out[key] = outcome;
+  }
+  return out;
+}
+
 function mergeConditionResults(runs) {
   if (!Array.isArray(runs) || !runs.length || !runs[0] || !runs[0].result) {
     throw new TypeError('mergeConditionResults(): expected [{ condition, result }], the default scan first.');
@@ -94,9 +108,19 @@ function mergeConditionResults(runs) {
       if (!current) {
         checks.set(check.ruleId, { ...check });
         occurrencesByRule.set(check.ruleId, new Map());
-      } else if (rank(check.outcome) > rank(current.outcome)) {
-        current.outcome = check.outcome;
-        if (check.error) current.error = check.error;
+      } else {
+        if (rank(check.outcome) > rank(current.outcome)) {
+          current.outcome = check.outcome;
+          if ('outcomeNormalized' in current) current.outcomeNormalized = normalized(check.outcome);
+          if (check.error) current.error = check.error;
+        }
+        if (check.checkOutcome && rank(check.checkOutcome) > rank(current.checkOutcome)) {
+          current.checkOutcome = check.checkOutcome;
+        }
+        // A scan of several profiles: each profile's verdict is its worst.
+        if (check.verdicts && typeof check.verdicts === 'object') {
+          current.verdicts = worstOf(current.verdicts, check.verdicts);
+        }
       }
       const byKey = occurrencesByRule.get(check.ruleId);
       for (const occurrence of check.occurrences || []) {
@@ -137,9 +161,25 @@ function mergeConditionResults(runs) {
     rulesResults = [...composites.values()];
   }
 
+  // Each profile's rule results, the worst of every scan's.
+  let profiles = base.profiles;
+  if (profiles && typeof profiles === 'object') {
+    profiles = {};
+    for (const { result } of runs) {
+      for (const [name, entry] of Object.entries((result && result.profiles) || {})) {
+        if (!entry || typeof entry !== 'object') continue;
+        const current = profiles[name];
+        profiles[name] = current
+          ? { ...current, rulesResults: worstOf(current.rulesResults, entry.rulesResults) }
+          : { ...entry, rulesResults: { ...(entry.rulesResults || {}) } };
+      }
+    }
+  }
+
   return {
     ...base,
     checksResults,
+    ...(profiles !== undefined ? { profiles } : {}),
     ...(rulesResults !== undefined ? { rulesResults } : {}),
     conditionRuns: runs.map(({ condition, result }) => ({
       condition,
