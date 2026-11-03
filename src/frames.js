@@ -57,17 +57,29 @@ function readFrameElement(el, options) {
   const opts = options || {};
   // The element and those around it in the flat tree, nearest first.
   const chain = [];
-  let inShadowRoot = false;
   for (let n = el; n; ) {
     if (n.nodeType === 1) chain.push(n);
     let next = (n.nodeType === 1 && n.assignedSlot) || n.parentNode;
-    if (next && next.nodeType === 11) {
-      if (next.host) inShadowRoot = true;
-      next = next.host || null;
-    }
+    if (next && next.nodeType === 11) next = next.host || null;
     n = next;
   }
   const matches = (selector) => chain.some((n) => n.matches && n.matches(selector));
+  // The document's own elements around it, through the shadow hosts it is
+  // in: include()'s roots are the document's elements its selectors match,
+  // as core's querySelectorAll finds them, and their shadow roots' frames
+  // are theirs.
+  const doc = el.ownerDocument;
+  const docAncestors = [];
+  for (let n = el; n; ) {
+    if (n.nodeType === 1 && n.getRootNode && n.getRootNode() === doc) docAncestors.push(n);
+    let next = n.parentNode;
+    if (next && next.nodeType === 11) next = next.host || null;
+    n = next;
+  }
+  // A frame in a shadow root is its own tree's, whatever slot it may be
+  // assigned to: a light-DOM frame slotted into a component is not.
+  const own = el.getRootNode && el.getRootNode();
+  const inShadowRoot = !!(own && own.nodeType === 11 && own.host);
   if (opts.includeShadowDom === false && inShadowRoot) return { skipped: 'excluded' };
   if (!opts.includeHidden) {
     try {
@@ -97,7 +109,25 @@ function readFrameElement(el, options) {
     } catch (e) {
       // read as not covered
     }
-    if (modals.length && !modals.some((d) => chain.indexOf(d) !== -1)) return { skipped: 'hidden' };
+    // With several open, only the topmost is reachable: the others are
+    // inert under it. The browser hit-tests none of an inert dialog, so the
+    // topmost is the one a point at its centre lands in. When that tells
+    // none apart (no layout), every open one counts.
+    const top = modals.filter((d) => {
+      try {
+        const r = d.getBoundingClientRect();
+        if (!r.width || !r.height) return false;
+        const view = doc.defaultView;
+        const x = Math.min(Math.max(r.left + r.width / 2, 0), (view.innerWidth || 1) - 1);
+        const y = Math.min(Math.max(r.top + r.height / 2, 0), (view.innerHeight || 1) - 1);
+        const hit = doc.elementFromPoint(x, y);
+        return !!hit && (hit === d || d.contains(hit) || (!!hit.shadowRoot && hit.shadowRoot.contains(d)));
+      } catch (e) {
+        return false;
+      }
+    });
+    const reachable = top.length ? top : modals;
+    if (modals.length && !reachable.some((d) => chain.indexOf(d) !== -1)) return { skipped: 'hidden' };
   }
   const excludes = Array.isArray(opts.excludeSelectors) ? opts.excludeSelectors : [];
   for (let i = 0; i < excludes.length; i++) {
@@ -112,7 +142,7 @@ function readFrameElement(el, options) {
     let inside = false;
     for (let i = 0; i < scope.length && !inside; i++) {
       try {
-        inside = matches(scope[i]);
+        inside = docAncestors.some((n) => n.matches(scope[i]));
       } catch (e) {
         // the scan says so of its own scope
       }

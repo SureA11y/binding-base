@@ -88,3 +88,37 @@ test('inheritFrameReading() and frameEngineOptions(): a frame inside an aria-hid
   assert.deepStrictEqual(frameEngineOptions(eo, { inert: true }), { excludeSelectors: ['.ad'], embeddedInert: true });
   assert.deepStrictEqual(frameEngineOptions({ topLevelDocument: true }, {}), {});
 });
+
+test('readFrameElement(): a light-DOM frame slotted into a component is no shadow-root content with includeShadowDom: false', () => {
+  const d = doc('<x-wrap><iframe id="slotted"></iframe></x-wrap>');
+  d.querySelector('x-wrap').attachShadow({ mode: 'open' }).innerHTML = '<div><slot></slot></div>';
+  assert.deepStrictEqual(readFrameElement(d.getElementById('slotted'), frameReadingOptions({ includeShadowDom: false }, null, true)), {});
+});
+
+test("readFrameElement(): include() scopes by the document's elements, as core's querySelectorAll does, not by an element of a shadow root", () => {
+  const d = doc('<x-panel></x-panel><main><x-card></x-card></main>');
+  d.querySelector('x-panel').attachShadow({ mode: 'open' }).innerHTML = '<div class="panel"><iframe id="f"></iframe></div>';
+  d.querySelector('x-card').attachShadow({ mode: 'open' }).innerHTML = '<iframe id="g"></iframe>';
+  const inPanel = d.querySelector('x-panel').shadowRoot.getElementById('f');
+  const inCard = d.querySelector('x-card').shadowRoot.getElementById('g');
+  assert.deepStrictEqual(readFrameElement(inPanel, frameReadingOptions({}, ['.panel'], true)), { skipped: 'outside-scope' });
+  // A shadow root's frames are its host's, in a scope that holds the host.
+  assert.deepStrictEqual(readFrameElement(inCard, frameReadingOptions({}, ['main'], true)), {});
+});
+
+test('readFrameElement(): with two modal dialogs open, only the topmost one\'s frames are reachable', () => {
+  const d = doc('<dialog id="lower"><iframe id="a"></iframe></dialog><dialog id="upper"><iframe id="b"></iframe></dialog>');
+  const lower = d.getElementById('lower');
+  const upper = d.getElementById('upper');
+  // jsdom opens no modal and lays nothing out: each says it is one, with a
+  // box, and a point lands in the upper one, as the browser hit-tests.
+  for (const dialog of [lower, upper]) {
+    const matches = dialog.matches.bind(dialog);
+    dialog.matches = (selector) => selector === ':modal' || matches(selector);
+    dialog.getBoundingClientRect = () => ({ left: 10, top: 10, width: 100, height: 100 });
+  }
+  d.elementFromPoint = () => upper;
+  const opts = frameReadingOptions({}, null, true);
+  assert.deepStrictEqual(readFrameElement(d.getElementById('a'), opts), { skipped: 'hidden' });
+  assert.deepStrictEqual(readFrameElement(d.getElementById('b'), opts), {});
+});
