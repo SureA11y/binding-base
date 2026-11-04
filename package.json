@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/binding-base",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Internal helpers shared by surea11y's bindings and test matcher -- not useful on its own. To check accessibility, install @surea11y/core with @surea11y/playwright, /cypress, /test-matchers or another binding instead.",
   "keywords": [
     "surea11y",
@@ -34,7 +34,7 @@
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
-    "@surea11y/core": "^1.14.0",
+    "@surea11y/core": "^1.15.0",
     "jsdom": "^29.1.1",
     "typescript": "^7.0.2"
   }
