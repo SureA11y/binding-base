@@ -5,7 +5,11 @@
 // (occurrenceOutcome and reviewGroupOf, 1.14.0 and later, also from its
 // browser-safe @surea11y/core/how-to-check), but this package can't require
 // core where a bundler would follow it, so they are restated here and
-// checked against core's in tests/core-contract.test.js.
+// checked against core's in tests/core-contract.test.js. They read a
+// finding as core's do; a passing check's occurrence (core 1.16.0's
+// occurrenceOutcome gives it 'pass') is no finding, so it reads as null
+// here, as it did in core before 1.16.0, and reviewGroupOf() gives null for
+// it in both.
 
 // See surea11y's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
 // checksResults entry can carry.
@@ -13,9 +17,9 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
 // An occurrence's own tier (occurrenceOutcome, or the outcome an older
 // label-in-name wrote) when it is fail or cantTell, or else its check's
-// outcome when that is; null otherwise. A rule's findings can sit in
-// different tiers, so a check's outcome alone puts its questions with its
-// failures.
+// outcome when that is; null otherwise, a passing check's occurrence
+// included. A rule's findings can sit in different tiers, so a check's
+// outcome alone puts its questions with its failures.
 function occurrenceOutcome(check, occurrence) {
   if (occurrence && typeof occurrence === 'object') {
     for (const tier of [occurrence.occurrenceOutcome, occurrence.outcome]) {

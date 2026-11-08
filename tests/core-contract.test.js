@@ -472,6 +472,34 @@ test("core contract: occurrenceOutcome() and reviewGroupOf() read a real result 
   }
 });
 
+// A passing check's summary occurrence ("All text meets the minimum
+// contrast") is no finding: core 1.16.0's occurrenceOutcome() gives it
+// 'pass', and before 1.16.0 null, as binding-base's does in every release.
+const PASSING_PAGE =
+  '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>A</h1>' +
+  '<p style="color:#000;background:#fff">Black on white</p></main></body></html>';
+
+test("core contract: a passing check's occurrence is no finding, where core 1.16.0 reads it as 'pass'", { skip: NEEDS_1_14 }, () => {
+  const page = pageScan(PASSING_PAGE);
+  try {
+    const result = page.scan(new A11yCoreBuilderBase().withRules(['contrast-computable', 'contrast-minimum']));
+    let seen = 0;
+    for (const check of result.checksResults) {
+      assert.strictEqual(check.outcome, 'pass', check.ruleId);
+      for (const occ of check.occurrences) {
+        seen += 1;
+        assert.ok([null, 'pass'].includes(core.occurrenceOutcome(check, occ)), check.ruleId);
+        assert.strictEqual(occurrenceOutcome(check, occ), null, check.ruleId);
+        assert.strictEqual(reviewGroupOf(check, occ), null, check.ruleId);
+        assert.strictEqual(core.reviewGroupOf(check, occ), null, check.ruleId);
+      }
+    }
+    assert.strictEqual(seen, 2, 'each contrast rule passes with one summary occurrence');
+  } finally {
+    page.close();
+  }
+});
+
 test('core contract: formatFailures() lists a real result in review order, with its leans and steps', { skip: NEEDS_1_14 }, () => {
   const page = pageScan(REVIEW_PAGE);
   try {
