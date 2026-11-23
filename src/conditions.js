@@ -90,10 +90,15 @@ function occurrenceKey(ruleId, occurrence) {
  * results take the worst one's. An occurrence keeps its own tier
  * (`occurrenceOutcome`), the worst it had in a scan, so a question isn't
  * counted as a failure once another scan fails its rule. What a scan left
- * out is kept from every scan: `skippedCustomRules`, `skippedPacks` and
- * `engine.profilesNotRun` list each entry once, and `contextMatch` is the
- * narrowest scope any scan had (its least `elementCount`, every unmatched
- * selector). `conditionRuns` lists each scan's condition and
+ * out is kept from every scan: `skippedCustomRules`, `skippedPacks`,
+ * `engine.profilesNotRun` and `notRun` list each entry once, and
+ * `contextMatch` is the narrowest scope any scan had (its least
+ * `elementCount`, every unmatched selector). A scan its time budget cut
+ * short leaves `engine.incomplete` on the merged result, counting the merged
+ * `notRun`. What a cap on occurrences (`output.maxOccurrencesPerRule`) left
+ * out is counted from the scans whose occurrences a rule keeps, each count
+ * the most one of them left out, and `engine.occurrenceCap` adds up those
+ * counts. `conditionRuns` lists each scan's condition and
  * `engine.environment`.
  */
 // What core writes as outcomeNormalized: notApplicable reads inapplicable.
@@ -110,6 +115,45 @@ function worstOf(a, b) {
   return out;
 }
 
+// What core 1.18.0's output.maxOccurrencesPerRule writes on a check result
+// it capped: how many occurrences it left out, by tier and leaning fail.
+const OMITTED_FIELDS = ['occurrencesOmitted', 'occurrencesOmittedByOutcome', 'occurrencesOmittedLeaningFail'];
+
+function withoutOmitted(check) {
+  const out = { ...check };
+  for (const field of OMITTED_FIELDS) delete out[field];
+  return out;
+}
+
+// The occurrences a cap left out of a merged check, from the scans whose
+// occurrences it keeps: each count the most any of them left out. Which
+// elements those were no scan says, so the same one left out under two
+// conditions can't be counted once; the largest count is the fewest there
+// can have been. Null when none of those scans left any out.
+function mergedOmitted(scans) {
+  let total = 0;
+  let leaningFail = 0;
+  const byOutcome = {};
+  for (const check of scans) {
+    if (typeof check.occurrencesOmitted === 'number') total = Math.max(total, check.occurrencesOmitted);
+    if (typeof check.occurrencesOmittedLeaningFail === 'number') {
+      leaningFail = Math.max(leaningFail, check.occurrencesOmittedLeaningFail);
+    }
+    const tiers = check.occurrencesOmittedByOutcome;
+    if (tiers && typeof tiers === 'object') {
+      for (const [tier, n] of Object.entries(tiers)) {
+        if (typeof n === 'number' && n > 0) byOutcome[tier] = Math.max(byOutcome[tier] || 0, n);
+      }
+    }
+  }
+  if (!total) return null;
+  return {
+    occurrencesOmitted: total,
+    ...(Object.keys(byOutcome).length ? { occurrencesOmittedByOutcome: byOutcome } : {}),
+    ...(leaningFail ? { occurrencesOmittedLeaningFail: leaningFail } : {})
+  };
+}
+
 function mergeConditionResults(runs) {
   if (!Array.isArray(runs) || !runs.length || !runs[0] || !runs[0].result) {
     throw new TypeError('mergeConditionResults(): expected [{ condition, result }], the default scan first.');
@@ -117,13 +161,17 @@ function mergeConditionResults(runs) {
   const base = runs[0].result;
   const checks = new Map();
   const occurrencesByRule = new Map();
+  // Each scan's check result for a rule, with its outcome's rank, for what
+  // a cap left out.
+  const scansByRule = new Map();
   for (const { condition, result } of runs) {
     for (const check of (result && result.checksResults) || []) {
       if (!check || typeof check.ruleId !== 'string') continue;
       const current = checks.get(check.ruleId);
       if (!current) {
-        checks.set(check.ruleId, { ...check });
+        checks.set(check.ruleId, withoutOmitted(check));
         occurrencesByRule.set(check.ruleId, new Map());
+        scansByRule.set(check.ruleId, []);
       } else {
         if (rank(check.outcome) > rank(current.outcome)) {
           current.outcome = check.outcome;
@@ -145,6 +193,7 @@ function mergeConditionResults(runs) {
           current.verdicts = worstOf(current.verdicts, check.verdicts);
         }
       }
+      scansByRule.get(check.ruleId).push({ rank: rank(check.outcome), check });
       const byKey = occurrencesByRule.get(check.ruleId);
       // Several findings of one rule on one element for one reason (a
       // button with three invalid ARIA values) are told apart by their
@@ -190,7 +239,14 @@ function mergeConditionResults(runs) {
       }
       return occurrence;
     });
-    return { ...check, occurrences };
+    // What a cap left out, from the same scans as the occurrences kept.
+    const omitted = mergedOmitted(
+      scansByRule
+        .get(check.ruleId)
+        .filter((scan) => merged < OUTCOME_RANK.cantTell || scan.rank >= OUTCOME_RANK.cantTell)
+        .map((scan) => scan.check)
+    );
+    return { ...check, occurrences, ...(omitted || {}) };
   });
 
   let rulesResults = base.rulesResults;
@@ -242,16 +298,53 @@ function mergeConditionResults(runs) {
       gapFields[field] = unionOf(lists, (e) => JSON.stringify(e && (e.id !== undefined ? e.id : e.name)));
     }
   }
-  const notRunLists = results.map((r) => r.engine && r.engine.profilesNotRun).filter(Array.isArray);
-  const engine =
-    notRunLists.length && base.engine && typeof base.engine === 'object'
-      ? {
-          ...base.engine,
-          profilesNotRun: unionOf(notRunLists, (e) =>
-            String(e && e.profile).trim().toLowerCase()
-          )
-        }
-      : base.engine;
+  // The rules a time budget left unstarted (core 1.18.0 and later), each
+  // rule and profile once.
+  const ruleNotRunLists = results.map((r) => r.notRun).filter(Array.isArray);
+  if (ruleNotRunLists.length) {
+    gapFields.notRun = unionOf(ruleNotRunLists, (e) => JSON.stringify([e && e.ruleId, e && e.profile]));
+  }
+  const engines = results.map((r) => r.engine).filter((e) => e && typeof e === 'object');
+  const notRunLists = engines.map((e) => e.profilesNotRun).filter(Array.isArray);
+  const engineFields = {};
+  if (notRunLists.length) {
+    engineFields.profilesNotRun = unionOf(notRunLists, (e) => String(e && e.profile).trim().toLowerCase());
+  }
+  // A scan cut short under one condition cuts the merged result short: its
+  // counts are the merged lists'.
+  const incompletes = engines.map((e) => e.incomplete).filter((i) => i && typeof i === 'object');
+  if (incompletes.length) {
+    const sheets = unionOf(
+      incompletes.map((i) => (Array.isArray(i.styleSheetsNotRead) ? i.styleSheetsNotRead : [])),
+      (href) => href
+    );
+    const profilesCut = (engineFields.profilesNotRun || []).filter((e) => e && e.reason === 'timeBudget').length;
+    const first = { ...incompletes[0] };
+    delete first.profilesNotRun;
+    delete first.styleSheetsNotRead;
+    engineFields.incomplete = {
+      ...first,
+      rulesNotRun: (gapFields.notRun || []).length,
+      ...(profilesCut ? { profilesNotRun: profilesCut } : {}),
+      ...(sheets.length ? { styleSheetsNotRead: sheets } : {})
+    };
+  }
+  // The cap's totals, counted again over the merged checks; none when the
+  // only occurrences it left out were of scans whose findings aren't kept.
+  const capped = checksResults.filter((c) => typeof c.occurrencesOmitted === 'number');
+  const cap = engines.map((e) => e.occurrenceCap).find((c) => c && typeof c === 'object');
+  if (cap && capped.length) {
+    engineFields.occurrenceCap = {
+      ...cap,
+      occurrencesOmitted: capped.reduce((sum, c) => sum + c.occurrencesOmitted, 0),
+      rulesCapped: capped.length
+    };
+  }
+  let engine = base.engine;
+  if (engine && typeof engine === 'object' && (Object.keys(engineFields).length || cap)) {
+    engine = { ...engine, ...engineFields };
+    if (!engineFields.occurrenceCap) delete engine.occurrenceCap;
+  }
   const matches = results.map((r) => r.contextMatch).filter((m) => m && typeof m === 'object');
   if (matches.length) {
     const counts = matches.map((m) => m.elementCount).filter((n) => typeof n === 'number');

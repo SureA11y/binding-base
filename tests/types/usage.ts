@@ -67,8 +67,14 @@ for (const gap of getScanGaps(result)) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
   else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
   else if (gap.kind === 'profile-not-run') gap.profile.reason.toUpperCase();
+  else if (gap.kind === 'scan-incomplete') gap.incomplete.rules.concat(gap.incomplete.styleSheetsNotRead ?? []).join(', ');
   else gap.selectors.join(', ');
 }
+
+if (result.engine?.incomplete) result.engine.incomplete.rulesNotRun.toFixed();
+for (const entry of result.notRun ?? []) entry.ruleId.toUpperCase();
+if (result.engine?.occurrenceCap) result.engine.occurrenceCap.rulesCapped.toFixed();
+for (const id of result.engine?.profileExcludes?.requirements ?? []) id.toUpperCase();
 
 for (const note of getScanNotes(result)) {
   if (note.kind === 'internals-hook') note.hook.toUpperCase();

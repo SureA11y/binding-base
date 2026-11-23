@@ -285,6 +285,8 @@ export interface ScanResultLike {
   skippedCustomRules?: Array<{ id: string | null; reason: string; excluded?: true }>;
   /** Packs that did not run, and why (@surea11y/core 1.11 and later). */
   skippedPacks?: Array<{ name: string | null; reason: string }>;
+  /** The rules a time budget left unstarted, with their profile in a scan of several (@surea11y/core 1.18.0 and later). */
+  notRun?: Array<{ ruleId: string; reason: 'timeBudget' | string; profile?: string }>;
   engine?: {
     version?: string;
     /** The level of the criteria the scan reports (@surea11y/core 1.12.0 and later). */
@@ -292,7 +294,19 @@ export interface ScanResultLike {
     /** A scan of several profiles: those it ran (@surea11y/core 1.15 and later). */
     profiles?: string[];
     /** A scan of several profiles: those asked for and not run, and why (@surea11y/core 1.15 and later). */
-    profilesNotRun?: Array<{ profile: string; reason: 'unknown-profile' | 'pack-skipped' | 'overridden-by-selection' | string }>;
+    profilesNotRun?: Array<{ profile: string; reason: 'unknown-profile' | 'pack-skipped' | 'overridden-by-selection' | 'timeBudget' | string }>;
+    /** A scan its time budget cut short (@surea11y/core 1.18.0 and later). */
+    incomplete?: {
+      reason: 'timeBudget' | string;
+      timeBudgetMs: number;
+      rulesNotRun: number;
+      profilesNotRun?: number;
+      styleSheetsNotRead?: string[];
+    };
+    /** What output.maxOccurrencesPerRule left out of the result (@surea11y/core 1.18.0 and later). */
+    occurrenceCap?: { maxOccurrencesPerRule: number; occurrencesOmitted: number; rulesCapped: number };
+    /** What the applied profile leaves out; `requirements` since @surea11y/core 1.18.0. */
+    profileExcludes?: { rules: string[]; criteria: string[]; requirements?: string[] };
     environment?: {
       /** Whether the page was shown in forced colors (@surea11y/core 1.12.0 and later). */
       forcedColors?: 'active' | 'none';
@@ -313,7 +327,12 @@ export type ScanGap =
   | { kind: 'context-partly-not-found'; message: string; selectors: string[] }
   | { kind: 'custom-rule-skipped'; message: string; rule: { id: string | null; reason: string } }
   | { kind: 'pack-skipped'; message: string; pack: { name: string | null; reason: string } }
-  | { kind: 'profile-not-run'; message: string; profile: { name: string; reason: string } };
+  | { kind: 'profile-not-run'; message: string; profile: { name: string; reason: string } }
+  | {
+      kind: 'scan-incomplete';
+      message: string;
+      incomplete: { reason: string; timeBudgetMs: number | null; rules: string[]; styleSheetsNotRead?: string[] };
+    };
 
 export type ScanNote =
   | { kind: 'forced-colors'; message: string; pageCss?: true }

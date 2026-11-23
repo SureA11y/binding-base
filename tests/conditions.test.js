@@ -363,3 +363,78 @@ test("mergeConditionResults(): a rule failing under one condition takes that sca
   assert.strictEqual(check.ruleSeverity, 'critical');
   assert.deepStrictEqual(getGatingFailures(merged, { failOnSeverity: 'serious' }).map((c) => c.ruleId), ['img-alt-present']);
 });
+
+test('mergeConditionResults(): a scan its time budget cut short under one condition cuts the merged result short', () => {
+  const merged = mergeConditionResults([
+    {
+      condition: 'default',
+      result: { checksResults: [], engine: { name: 'surea11y' }, notRun: [] }
+    },
+    {
+      condition: { colorScheme: 'dark' },
+      result: {
+        checksResults: [],
+        engine: {
+          name: 'surea11y',
+          incomplete: { reason: 'timeBudget', timeBudgetMs: 50, rulesNotRun: 2, profilesNotRun: 1 },
+          profilesNotRun: [{ profile: 'wai-aria-1.2', reason: 'timeBudget' }]
+        },
+        notRun: [{ ruleId: 'image-alt', reason: 'timeBudget' }, { ruleId: 'image-alt', reason: 'timeBudget', profile: 'wai-aria-1.2' }]
+      }
+    },
+    {
+      condition: { width: 320 },
+      result: {
+        checksResults: [],
+        engine: { name: 'surea11y', incomplete: { reason: 'timeBudget', timeBudgetMs: 50, rulesNotRun: 2 } },
+        notRun: [{ ruleId: 'image-alt', reason: 'timeBudget' }, { ruleId: 'aria-valid', reason: 'timeBudget' }]
+      }
+    }
+  ]);
+  assert.deepEqual(merged.notRun, [
+    { ruleId: 'image-alt', reason: 'timeBudget' },
+    { ruleId: 'image-alt', reason: 'timeBudget', profile: 'wai-aria-1.2' },
+    { ruleId: 'aria-valid', reason: 'timeBudget' }
+  ]);
+  assert.deepEqual(merged.engine.incomplete, { reason: 'timeBudget', timeBudgetMs: 50, rulesNotRun: 3, profilesNotRun: 1 });
+  const gap = getScanGaps(merged).find((g) => g.kind === 'scan-incomplete');
+  assert.deepEqual(gap.incomplete.rules, ['image-alt', 'aria-valid']);
+});
+
+test('mergeConditionResults(): what a cap on occurrences left out is counted from the scans whose findings are kept', () => {
+  const imgs = (n) => Array.from({ length: n }, (_, i) => ({ selector: `img:nth-of-type(${i + 1})` }));
+  const scan = (outcome, kept, omitted, extra = {}) => ({
+    checksResults: [
+      {
+        ruleId: 'img-alt-present',
+        outcome,
+        occurrences: imgs(kept),
+        ...(omitted ? { occurrencesOmitted: omitted, occurrencesOmittedByOutcome: { [outcome]: omitted } } : {}),
+        ...extra
+      }
+    ],
+    engine: omitted ? { name: 'surea11y', occurrenceCap: { maxOccurrencesPerRule: kept, occurrencesOmitted: omitted, rulesCapped: 1 } } : { name: 'surea11y' }
+  });
+  // Passing by default with a capped summary, failing in dark mode and at
+  // 320 with more left out at 320.
+  const merged = mergeConditionResults([
+    { condition: 'default', result: scan('pass', 1, 9) },
+    { condition: { colorScheme: 'dark' }, result: scan('fail', 2, 3, { occurrencesOmittedLeaningFail: 1 }) },
+    { condition: { width: 320 }, result: scan('fail', 2, 5) }
+  ]);
+  const [check] = merged.checksResults;
+  assert.strictEqual(check.outcome, 'fail');
+  assert.strictEqual(check.occurrencesOmitted, 5);
+  assert.deepEqual(check.occurrencesOmittedByOutcome, { fail: 5 });
+  assert.strictEqual(check.occurrencesOmittedLeaningFail, 1);
+  assert.deepEqual(merged.engine.occurrenceCap, { maxOccurrencesPerRule: 1, occurrencesOmitted: 5, rulesCapped: 1 });
+
+  // Only the passing scan was capped: nothing it left out is a finding.
+  const clean = mergeConditionResults([
+    { condition: 'default', result: scan('pass', 1, 9) },
+    { condition: { colorScheme: 'dark' }, result: scan('fail', 2, 0) }
+  ]);
+  assert.ok(!('occurrencesOmitted' in clean.checksResults[0]));
+  assert.ok(!('occurrencesOmittedByOutcome' in clean.checksResults[0]));
+  assert.ok(!('occurrenceCap' in clean.engine));
+});
