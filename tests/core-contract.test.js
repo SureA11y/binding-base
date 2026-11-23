@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 const core = require('@surea11y/core');
-const { A11yCoreBuilderBase, formatFailures, getScanGaps, getScanNotes } = require('../src/index.js');
+const { A11yCoreBuilderBase, formatFailures, getScanGaps, getScanNotes, mergeConditionResults } = require('../src/index.js');
 
 const PAGE = '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"></main></body></html>';
 
@@ -623,4 +623,58 @@ test('core contract: a profile a scan of several did not run is a profile-not-ru
   } finally {
     page.close();
   }
+});
+
+// Whether the engine has a time budget and a cap on occurrences (1.18.0).
+const HAS_TIME_BUDGET = (() => {
+  const page = pageScan();
+  try {
+    const r = quietly(() => page.scan(new A11yCoreBuilderBase().options({ timeBudgetMs: 1 })));
+    return !!(r.engine && r.engine.incomplete);
+  } finally {
+    page.close();
+  }
+})();
+const NEEDS_1_18 = HAS_TIME_BUDGET ? false : 'needs @surea11y/core 1.18.0 (timeBudgetMs)';
+
+test('core contract: a scan its time budget cut short is a scan-incomplete gap, never a clean scan', { skip: NEEDS_1_18 }, () => {
+  const page = pageScan();
+  try {
+    const result = quietly(() => page.scan(new A11yCoreBuilderBase().options({ timeBudgetMs: 1 })));
+    const gaps = getScanGaps(result).filter((g) => g.kind === 'scan-incomplete');
+    assert.strictEqual(gaps.length, 1);
+    assert.strictEqual(gaps[0].incomplete.reason, 'timeBudget');
+    assert.strictEqual(gaps[0].incomplete.timeBudgetMs, 1);
+    assert.strictEqual(gaps[0].incomplete.rules.length, result.engine.incomplete.rulesNotRun);
+    assert.ok(gaps[0].incomplete.rules.length > 0);
+    assert.doesNotMatch(formatFailures(result), /^No accessibility violations found\.\n/);
+    assert.match(formatFailures(result), /The scan was cut short: its time budget of 1 ms ran out/);
+  } finally {
+    page.close();
+  }
+});
+
+test('core contract: scans under conditions, each capped, merge what the cap left out', { skip: NEEDS_1_18 }, () => {
+  const html = PAGE.replace('<img src="a.png">', '<img src="a.png"><img src="b.png"><img src="c.png">');
+  const scanOnce = () => {
+    const page = pageScan(html);
+    try {
+      return quietly(() => page.scan(new A11yCoreBuilderBase().options({ output: { maxOccurrencesPerRule: 1 } })));
+    } finally {
+      page.close();
+    }
+  };
+  const one = scanOnce();
+  const capped = one.checksResults.filter((c) => c.occurrencesOmitted);
+  assert.ok(capped.length > 0, 'the real scan left occurrences out');
+  const merged = mergeConditionResults([
+    { condition: 'default', result: one },
+    { condition: { colorScheme: 'dark' }, result: scanOnce() }
+  ]);
+  for (const check of capped) {
+    const m = merged.checksResults.find((c) => c.ruleId === check.ruleId);
+    assert.strictEqual(m.occurrencesOmitted, check.occurrencesOmitted, check.ruleId);
+    assert.deepEqual(m.occurrencesOmittedByOutcome, check.occurrencesOmittedByOutcome, check.ruleId);
+  }
+  assert.deepEqual(merged.engine.occurrenceCap, one.engine.occurrenceCap);
 });

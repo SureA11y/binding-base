@@ -187,3 +187,66 @@ test('getScanGaps(): one gap per profile a scan of several did not run, with why
   // An entry naming no profile, which core never writes, is no gap.
   assert.deepStrictEqual(getScanGaps(result({ engine: { profilesNotRun: [null, { profile: '' }, { profile: '  ' }, 7] } })), []);
 });
+
+test('getScanGaps(): a scan its time budget cut short is one scan-incomplete gap, each rule named once', () => {
+  const gaps = getScanGaps(result({
+    engine: { version: '1.18.0', incomplete: { reason: 'timeBudget', timeBudgetMs: 2000, rulesNotRun: 3, profilesNotRun: 1 },
+      profilesNotRun: [{ profile: 'wai-aria-1.2', reason: 'timeBudget' }] },
+    notRun: [
+      { ruleId: 'image-alt', reason: 'timeBudget' },
+      { ruleId: 'aria-valid', reason: 'timeBudget', profile: 'wai-aria-1.2' },
+      { ruleId: 'image-alt', reason: 'timeBudget', profile: 'wai-aria-1.2' }
+    ]
+  }));
+  assert.deepStrictEqual(gaps, [
+    {
+      kind: 'profile-not-run',
+      profile: { name: 'wai-aria-1.2', reason: 'timeBudget' },
+      message: 'Profile "wai-aria-1.2" was asked for and did not run: the scan\'s time budget ran out before it started.'
+    },
+    {
+      kind: 'scan-incomplete',
+      incomplete: { reason: 'timeBudget', timeBudgetMs: 2000, rules: ['image-alt', 'aria-valid'] },
+      message:
+        'The scan was cut short: its time budget of 2000 ms ran out, and 2 rules ("image-alt", "aria-valid") did not run. Those rules checked nothing.'
+    }
+  ]);
+});
+
+test('getScanGaps(): a long list of rules not run is named in part, and style sheets not read are listed', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const [gap] = getScanGaps(result({
+    engine: { incomplete: { reason: 'timeBudget', timeBudgetMs: 500, rulesNotRun: 7, styleSheetsNotRead: ['https://cdn.example/a.css'] } },
+    notRun: ids.map((ruleId) => ({ ruleId, reason: 'timeBudget' }))
+  }));
+  assert.deepStrictEqual(gap.incomplete.rules, ids);
+  assert.deepStrictEqual(gap.incomplete.styleSheetsNotRead, ['https://cdn.example/a.css']);
+  assert.strictEqual(
+    gap.message,
+    'The scan was cut short: its time budget of 500 ms ran out, and 7 rules ("a", "b", "c", "d", "e" and 2 more) did not run; ' +
+      '1 style sheet ("https://cdn.example/a.css") was not read. Those rules checked nothing.'
+  );
+});
+
+test('getScanGaps(): style sheets alone not read, and notRun without engine.incomplete, are gaps too', () => {
+  const [sheets] = getScanGaps(result({
+    engine: { incomplete: { reason: 'timeBudget', timeBudgetMs: 100, rulesNotRun: 0, styleSheetsNotRead: ['https://x/a.css', 'https://x/b.css'] } }
+  }));
+  assert.strictEqual(
+    sheets.message,
+    'The scan was cut short: its time budget of 100 ms ran out, and 2 style sheets ("https://x/a.css", "https://x/b.css") were not read.'
+  );
+  const [bare] = getScanGaps(result({ notRun: [{ ruleId: 'image-alt', reason: 'timeBudget' }] }));
+  assert.deepStrictEqual(bare.incomplete, { reason: 'timeBudget', timeBudgetMs: null, rules: ['image-alt'] });
+  assert.strictEqual(bare.message, 'The scan was cut short: its time budget ran out, and 1 rule ("image-alt") did not run. That rule checked nothing.');
+});
+
+test('formatFailures(result): no findings in a scan cut short says so of what was scanned', () => {
+  assert.match(
+    formatFailures(result({
+      engine: { version: '1.18.0', incomplete: { reason: 'timeBudget', timeBudgetMs: 1, rulesNotRun: 1 } },
+      notRun: [{ ruleId: 'image-alt', reason: 'timeBudget' }]
+    })),
+    /^No accessibility violations found in what was scanned\.\n\nThe scan was cut short: /
+  );
+});

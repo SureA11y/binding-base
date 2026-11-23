@@ -13,6 +13,74 @@ function quoteList(values) {
   return values.map((v) => JSON.stringify(String(v))).join(', ');
 }
 
+// At most this many rule ids or style sheets are named in a message; the
+// gap's own lists hold every one.
+const NAMED_IN_MESSAGE = 5;
+
+function namedList(values) {
+  const named = quoteList(values.slice(0, NAMED_IN_MESSAGE));
+  const more = values.length - NAMED_IN_MESSAGE;
+  return more > 0 ? `${named} and ${more} more` : named;
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+// The gap of a scan its time budget (engineOptions.timeBudgetMs, core 1.18.0
+// and later) cut short: the rules it did not start (`notRun`, each id once,
+// though a scan of several profiles lists one per profile) and the style
+// sheets the browser bundle had not read (`engine.incomplete.styleSheetsNotRead`).
+// Profiles left unstarted are profile-not-run gaps of their own.
+function scanIncomplete(result) {
+  const incomplete =
+    result.engine && result.engine.incomplete && typeof result.engine.incomplete === 'object'
+      ? result.engine.incomplete
+      : null;
+  const notRun = Array.isArray(result.notRun) ? result.notRun : [];
+  if (!incomplete && !notRun.length) return null;
+  const rules = [];
+  for (const entry of notRun) {
+    const id = entry && typeof entry.ruleId === 'string' && entry.ruleId ? entry.ruleId : null;
+    if (id && !rules.includes(id)) rules.push(id);
+  }
+  const styleSheets =
+    incomplete && Array.isArray(incomplete.styleSheetsNotRead)
+      ? incomplete.styleSheetsNotRead.filter((href) => typeof href === 'string' && href)
+      : [];
+  const reason =
+    (incomplete && typeof incomplete.reason === 'string' && incomplete.reason) ||
+    (notRun.find((e) => e && typeof e.reason === 'string' && e.reason) || {}).reason ||
+    'timeBudget';
+  const budget = incomplete && typeof incomplete.timeBudgetMs === 'number' ? incomplete.timeBudgetMs : null;
+
+  const missed = [];
+  if (rules.length) missed.push(`${plural(rules.length, 'rule', 'rules')} (${namedList(rules)}) did not run`);
+  if (styleSheets.length) {
+    missed.push(
+      `${plural(styleSheets.length, 'style sheet', 'style sheets')} (${namedList(styleSheets)}) ${styleSheets.length === 1 ? 'was' : 'were'} not read`
+    );
+  }
+  const why =
+    reason === 'timeBudget'
+      ? `its time budget${budget !== null ? ` of ${budget} ms` : ''} ran out`
+      : `it stopped early (${reason})`;
+  return {
+    kind: 'scan-incomplete',
+    incomplete: {
+      reason,
+      timeBudgetMs: budget,
+      rules,
+      ...(styleSheets.length ? { styleSheetsNotRead: styleSheets } : {})
+    },
+    message:
+      `The scan was cut short: ${why}` +
+      (missed.length ? `, and ${missed.join('; ')}` : '') +
+      '.' +
+      (rules.length ? ` ${rules.length === 1 ? 'That rule' : 'Those rules'} checked nothing.` : '')
+  };
+}
+
 /**
  * What a scan result says it left out, which its checksResults alone would
  * pass over as clean. Reads fields @surea11y/core added in 1.10.0; a result
@@ -31,12 +99,17 @@ function quoteList(values) {
  * - `profile-not-run`: a scan of several profiles (options({ profile: [...] }),
  *   @surea11y/core 1.15 and later) did not judge the page by one of them,
  *   one gap per profile, with the engine's reason (`unknown-profile`,
- *   `pack-skipped`, `overridden-by-selection`): it counted less than it was
- *   asked to.
+ *   `pack-skipped`, `overridden-by-selection`, and since 1.18.0 `timeBudget`):
+ *   it counted less than it was asked to.
+ * - `scan-incomplete`: the scan's time budget (options({ timeBudgetMs }),
+ *   @surea11y/core 1.18.0 and later) ran out before every rule had started,
+ *   one gap for the scan, listing each rule that did not run (`notRun`, by
+ *   id) and, from the browser bundle, the style sheets not read. Such a
+ *   result is never a clean one.
  *
  * @param {object} result one scan result (for a frames(true) scan, call it
  *   on `topFrame` and on each entry of `frames` that has `checksResults`)
- * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string }, pack?: { name: (string|null), reason: string }, profile?: { name: string, reason: string } }>}
+ * @returns {Array<{ kind: string, message: string, selectors?: string[], rule?: { id: (string|null), reason: string }, pack?: { name: (string|null), reason: string }, profile?: { name: string, reason: string }, incomplete?: { reason: string, timeBudgetMs: (number|null), rules: string[], styleSheetsNotRead?: string[] } }>}
  */
 function getScanGaps(result) {
   if (!result || typeof result !== 'object' || !Array.isArray(result.checksResults)) {
@@ -99,6 +172,7 @@ function getScanGaps(result) {
       ? 'no such profile in core or the packs given'
       : "no such profile in core (a pack's profile needs its pack)",
     'pack-skipped': 'its pack did not run',
+    timeBudget: "the scan's time budget ran out before it started",
     'overridden-by-selection': 'the rules chosen in runOnly, or by rules, tags or tests in the engine options, select the rules instead'
   };
   for (const p of notRun) {
@@ -113,6 +187,9 @@ function getScanGaps(result) {
       message: `Profile ${JSON.stringify(profile)} was asked for and did not run: ${REASONS[reason] || reason}.`
     });
   }
+
+  const incomplete = scanIncomplete(result);
+  if (incomplete) gaps.push(incomplete);
 
   return gaps;
 }
