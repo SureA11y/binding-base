@@ -43,6 +43,15 @@ function loadCoreCatalog(method) {
 // loaded, which a scan can't fix afterwards.
 const HOOK_NOTES = ['internals-hook', 'listener-hook', 'live-region-hook'];
 
+// engineOptions.timeBudgetMs as core 1.18.0 reads it: a finite number above
+// 0, or null for none (left out, Infinity, or a value core refuses).
+function readTimeBudget(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+// The least budget left to a scan after fetching style sheets: core reads 0
+// as no budget, so a budget spent is passed as one that ends at once.
+const MIN_BUDGET_MS = 0.001;
+
 // What surea11y's runOnly.wcag accepts.
 const WCAG_VERSIONS = ['2.0', '2.1', '2.2'];
 const WCAG_LEVELS = ['A', 'AA', 'AAA'];
@@ -134,6 +143,9 @@ class A11yCoreBuilderBase {
     this._screenshots = null;
     // Fetch the style sheets the page can't read, for core to read instead.
     this._fetchStyleSheets = true;
+    // What _styleSheetEngineOptions() did with a time budget, for
+    // _warnScanGaps() to put on the scan's result.
+    this._styleSheetBudget = null;
     this._screenshotScan = null;
     // .conditions(): the conditions to scan the page under after the default.
     this._conditions = null;
@@ -500,21 +512,63 @@ class A11yCoreBuilderBase {
    * any whose text the caller already gave. Never throws: when anything
    * fails, or with fetchStyleSheets(false), an older core or no
    * _evaluateInFrame(), it returns `engineOptions` as given.
+   *
+   * A time budget (`engineOptions.timeBudgetMs`, core 1.18.0) bounds the
+   * whole scan, as core's own runa11yCoreInPageAsync does: it counts from
+   * before the fetching, which may take half of it, and the scan is given
+   * what is left. The sheets given up on for it are recorded, and
+   * _warnScanGaps(), which a binding calls on the frame's result right after
+   * its scan, names them in `engine.incomplete.styleSheetsNotRead` and puts
+   * the budget the caller gave back in `engine.incomplete.timeBudgetMs`.
    */
   async _styleSheetEngineOptions(frame, engineOptions) {
     const given = engineOptions || {};
+    this._styleSheetBudget = null;
     if (!this._fetchStyleSheets || typeof this._evaluateInFrame !== 'function') return given;
+    const budget = readTimeBudget(given.timeBudgetMs);
+    const started = Date.now();
     try {
       if (!this._coreReadsStyleSheetTexts()) return given;
       const hrefs = await this._evaluateInFrame(frame, findUnreadableStyleSheets, []);
       const have = Array.isArray(given.styleSheetTexts) ? given.styleSheetTexts : [];
       const wanted = (Array.isArray(hrefs) ? hrefs : []).filter((h) => !have.some((s) => s && s.href === h));
       if (!wanted.length) return given;
-      const fetched = await fetchStyleSheetTexts(wanted, { fetch: this._styleSheetFetch || globalThis.fetch });
-      return fetched.length ? { ...given, styleSheetTexts: have.concat(fetched) } : given;
+      const fetched = await fetchStyleSheetTexts(wanted, {
+        fetch: this._styleSheetFetch || globalThis.fetch,
+        ...(budget !== null ? { deadline: started + budget / 2 } : {})
+      });
+      let options = fetched.length ? { ...given, styleSheetTexts: have.concat(fetched) } : given;
+      if (budget !== null) {
+        // What is left, never 0, which core reads as no budget.
+        const left = Math.max(budget - (Date.now() - started), MIN_BUDGET_MS);
+        if (left < budget) options = { ...options, timeBudgetMs: left };
+        this._styleSheetBudget = { budget, notRead: Array.isArray(fetched.notRead) ? fetched.notRead.slice() : [] };
+      }
+      return options;
     } catch {
+      this._styleSheetBudget = null;
       return given;
     }
+  }
+
+  /**
+   * The step _warnScanGaps() takes first: what _styleSheetEngineOptions()
+   * recorded of the time budget for the scan that gave `result`, put on it.
+   * Once per scan: the record is cleared.
+   */
+  _applyStyleSheetBudget(result) {
+    const recorded = this._styleSheetBudget;
+    this._styleSheetBudget = null;
+    if (!recorded || !result || typeof result !== 'object' || !result.engine || typeof result.engine !== 'object') return;
+    const had = result.engine.incomplete && typeof result.engine.incomplete === 'object' ? result.engine.incomplete : null;
+    if (!had && !recorded.notRead.length) return;
+    result.engine.incomplete = {
+      reason: 'timeBudget',
+      rulesNotRun: 0,
+      ...had,
+      timeBudgetMs: recorded.budget,
+      ...(recorded.notRead.length ? { styleSheetsNotRead: recorded.notRead } : {})
+    };
   }
 
   /**
@@ -716,11 +770,14 @@ class A11yCoreBuilderBase {
    * findings the listener or live-region hook would have decided. Other
    * notes are left to formatFailures().
    * Anything that isn't a scan result is passed over: the caller sees it as
-   * it is.
+   * it is. Called right after the frame's scan, it first puts on the result
+   * what a time budget did to the style sheets fetched for that scan
+   * (_styleSheetEngineOptions()).
    * @param {object} result one frame's scan result
    * @param {string} source what the line names as its sender, the binding's package name
    */
   _warnScanGaps(result, source) {
+    this._applyStyleSheetBudget(result);
     let gaps;
     try {
       gaps = getScanGaps(result);

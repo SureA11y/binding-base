@@ -209,7 +209,10 @@ export class A11yCoreBuilderBase {
   _buildEngineArgs(): EngineArgs;
   /** The script that registers this scan's packs in a page, or null without packs. */
   _packScript(): string | null;
-  /** Sends each of a frame's scan gaps to the logger(), or prints it with console.warn as `<source> (<url>): <message>`. */
+  /**
+   * Sends each of a frame's scan gaps to the logger(), or prints it with console.warn as `<source> (<url>): <message>`.
+   * Call it right after the frame's scan: it first puts on the result what a time budget did to the style sheets fetched for it.
+   */
   _warnScanGaps(result: unknown, source: string): void;
   /** The last step of each frame's result: adds the steps for undecided findings (_addHowToCheck()), then filters per reportOnly(). */
   _applyReportOnly<T extends { checksResults?: unknown[] }>(result: T): T;
@@ -572,5 +575,10 @@ export function findUnreadableStyleSheets(): string[];
 /** In Node: the text of each style sheet that answered in time. Never rejects. */
 export function fetchStyleSheetTexts(
   hrefs: string[],
-  options?: { fetch?: (url: string, init?: unknown) => Promise<{ ok: boolean; text(): Promise<string> }>; timeoutMs?: number }
-): Promise<Array<{ href: string; text: string }>>;
+  options?: {
+    fetch?: (url: string, init?: unknown) => Promise<{ ok: boolean; text(): Promise<string> }>;
+    timeoutMs?: number;
+    /** A time in ms (as Date.now() gives it) no request waits past; those given up on for it are in `notRead`. */
+    deadline?: number;
+  }
+): Promise<Array<{ href: string; text: string }> & { readonly notRead: string[] }>;

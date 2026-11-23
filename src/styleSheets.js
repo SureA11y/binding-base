@@ -39,26 +39,48 @@ function findUnreadableStyleSheets() {
 // In Node: the text of each sheet, [{ href, text }] for those that answered
 // in time with a 2xx. Never rejects. `fetch` is the global one unless given
 // (a binding may pass its driver's, which carries the page's cookies);
-// each request is given up after `timeoutMs`.
-async function fetchStyleSheetTexts(hrefs, { fetch: fetchFn = globalThis.fetch, timeoutMs = 5000 } = {}) {
-  if (typeof fetchFn !== 'function' || !Array.isArray(hrefs) || !hrefs.length) return [];
+// each request is given up after `timeoutMs`. With a `deadline` (a time in
+// ms, as Date.now() gives it), no request waits past it, and the array's
+// `notRead` lists the sheets given up on for it, as core's
+// preloadStyleSheets() does: a scan's time budget (timeBudgetMs) gives the
+// fetching half of it.
+async function fetchStyleSheetTexts(hrefs, { fetch: fetchFn = globalThis.fetch, timeoutMs = 5000, deadline } = {}) {
+  const notRead = [];
+  // Not enumerable: the array still reads, and compares, as [{ href, text }].
+  const done = (list) => Object.defineProperty(list, 'notRead', { value: notRead });
+  if (typeof fetchFn !== 'function' || !Array.isArray(hrefs) || !hrefs.length) return done([]);
+  const hasDeadline = typeof deadline === 'number' && Number.isFinite(deadline);
   const one = async (href) => {
     if (!/^https?:\/\//i.test(String(href))) return null;
+    const left = hasDeadline ? deadline - Date.now() : Infinity;
+    if (left <= 0) {
+      notRead.push(href);
+      return null;
+    }
+    const wait = Math.min(timeoutMs, left);
+    const byDeadline = wait < timeoutMs;
+    let timedOut = false;
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = setTimeout(() => controller && controller.abort(), timeoutMs);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (controller) controller.abort();
+    }, wait);
     try {
       const res = await fetchFn(href, controller ? { signal: controller.signal } : undefined);
       if (!res || !res.ok) return null;
       const text = await res.text();
       return typeof text === 'string' ? { href, text } : null;
     } catch {
+      if (timedOut && byDeadline) notRead.push(href);
       return null;
     } finally {
       clearTimeout(timer);
     }
   };
   const got = await Promise.all(hrefs.map(one));
-  return got.filter(Boolean);
+  // In the order the page gave them.
+  notRead.sort((a, b) => hrefs.indexOf(a) - hrefs.indexOf(b));
+  return done(got.filter(Boolean));
 }
 
 module.exports = {
