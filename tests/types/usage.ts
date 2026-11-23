@@ -13,6 +13,7 @@ import {
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
+  fetchStyleSheetTexts,
   getScanNotes,
   queryOccurrenceElement,
   rethrowEngineError,
@@ -138,3 +139,5 @@ const checked = readConditions([{ colorScheme: 'dark', width: 320 }]);
 const label: string = conditionLabel(checked ? checked[0] : null);
 const merged = mergeConditionResults([{ condition: 'default', result: scanned }]);
 const runLabels: string[] = merged.conditionRuns.map((r) => r.condition);
+
+void fetchStyleSheetTexts(['https://cdn.example/a.css'], { deadline: Date.now() + 500 }).then((sheets) => sheets.notRead.concat(sheets.map((s) => s.href)));
